@@ -52,7 +52,7 @@ It does not use cloud APIs and does not replace a pharmacist, doctor, or other q
 4. Install Python dependencies:
 
    ```bash
-   cd ~/Documents/Codex/2026-06-12/files-mentioned-by-the-user-pasted/outputs/medicine-label-helper
+   cd ~/Documents/Codex/MediLens
    py -m pip install -r requirements.txt
    ```
 
@@ -103,7 +103,7 @@ Leave this window open.
 Open a third Git Bash window and run:
 
    ```bash
-   cd ~/Documents/Codex/2026-06-12/files-mentioned-by-the-user-pasted/outputs/medicine-label-helper
+   cd ~/Documents/Codex/MediLens
    py app.py
    ```
 
@@ -379,37 +379,17 @@ NHS website content is generally available under the Open Government Licence unl
 
 RxNorm and dm+d are useful for names and identifiers. If you cannot use APIs, use their downloadable files or manually curated exports, then review changes before copying names into `medicines.csv`. They are not plain-language patient explanation sources.
 
-### NHS and BNF Review Files
+### Source Consistency Check
 
-The project includes helper scripts for source review:
+The app keeps the active medicine database in `medicines.csv`. The only helper script kept in this repository is the current source consistency checker:
 
 ```bash
-py scripts/update_nhs_source_urls.py
-py scripts/add_bnf_candidate_urls.py
-py scripts/check_source_consistency.py
-py scripts/extract_source_fields.py
-py scripts/merge_source_fields.py
+py scripts/check_semantic_consistency.py
 ```
 
-`update_nhs_source_urls.py` checks NHS Medicines A to Z pages and writes `medicines_nhs_reviewed.csv`.
+It compares the `common_uses` and `safety_warning` columns in `medicines.csv` with each row's `source_url`, then writes `medicine_semantic_consistency_report.csv`.
 
-`add_bnf_candidate_urls.py` adds BNF candidate URLs for rows that were not matched on NHS and writes `medicines_nhs_bnf_reviewed.csv`.
-
-`check_source_consistency.py` compares `common_uses`, `safety_warning`, and `notes` with source-page text and writes `medicine_source_consistency_report.csv`.
-
-`extract_source_fields.py` creates temporary source-derived fields for review.
-
-`merge_source_fields.py` combines the reviewed source-derived text back into compact `common_uses` and `safety_warning` fields and writes `medicines_model_ready.csv`.
-
-BNF blocks automated verification requests, so BNF URLs are marked:
-
-```text
-bnf_url_candidate_needs_manual_review
-```
-
-Open those BNF candidate URLs manually before changing their status to reviewed.
-
-If a source blocks automated checks, save copied page text in:
+Some source pages may block automated checks. If that happens, save copied page text in:
 
 ```text
 source_pages/<generic-name>.txt
@@ -424,13 +404,7 @@ source_pages/celecoxib.txt
 Then rerun:
 
 ```bash
-py scripts/check_source_consistency.py
+py scripts/check_semantic_consistency.py
 ```
 
-The consistency report is a triage tool. A low score means “review this row”; it does not prove the row is wrong.
-
-When you are happy with `medicines_model_ready.csv`, stop the app and copy it over the active database:
-
-```bash
-cp medicines_model_ready.csv medicines.csv
-```
+The consistency report is a triage tool. A low score means "review this row"; it does not prove the row is wrong.
