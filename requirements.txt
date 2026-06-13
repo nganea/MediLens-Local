@@ -1,0 +1,6 @@
+gradio
+pandas
+pillow
+pytesseract
+rapidfuzz
+requests
