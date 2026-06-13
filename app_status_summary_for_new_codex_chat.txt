@@ -2,7 +2,7 @@ MediLens Local: Current App Status
 ==================================
 
 Project folder:
-C:\Users\n_k_r\Documents\Codex\2026-06-12\files-mentioned-by-the-user-pasted\outputs\medicine-label-helper
+C:\Users\n_k_r\Documents\Codex\MediLens
 
 Main app file:
 app.py
@@ -52,7 +52,7 @@ Window 2: start MiniCPM-V
 llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
 
 Window 3: start Gradio app
-cd ~/Documents/Codex/2026-06-12/files-mentioned-by-the-user-pasted/outputs/medicine-label-helper
+cd ~/Documents/Codex/MediLens
 py app.py
 
 Then open:
@@ -213,4 +213,3 @@ requirements.txt
 
 README.md
 - Setup and usage instructions.
-

@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-DEFAULT_INPUT = "medicines_model_ready_class_checked.csv"
+DEFAULT_INPUT = "medicines.csv"
 DEFAULT_OUTPUT = "medicine_semantic_consistency_report.csv"
 SOURCE_CACHE_DIR = Path("source_pages")
 
