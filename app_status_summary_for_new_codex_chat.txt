@@ -1,4 +1,4 @@
-MediLens Local: App Status Summary For New Codex Chat
+﻿MediLens Local: App Status Summary For New Codex Chat
 =====================================================
 
 Current project folder
@@ -119,7 +119,7 @@ Main user workflow
 
 OCR behavior
 ------------
-MiniCPM-V OCR and Tesseract are enabled together by default.
+MiniCPM-V 4.6 and Tesseract are enabled together by default.
 
 Tesseract is useful for debugging and fallback text, but if MiniCPM-V cannot be reached or cannot read the image, the app should not trust Tesseract-only OCR for matching because it can produce incorrect medicine names.
 

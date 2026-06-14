@@ -1,0 +1,420 @@
+/* ── Force light palette (backstop if .dark class is applied) ───── */
+.dark {
+    --body-background-fill: #f0f4f5;
+    --background-fill-primary: #ffffff;
+    --background-fill-secondary: #ffffff;
+    --block-background-fill: #ffffff;
+    --border-color-primary: #e3e8eb;
+    --body-text-color: #212b32;
+    --body-text-color-subdued: #425563;
+    --color-accent-soft: #e8f4fe;
+    color-scheme: light;
+}
+html { color-scheme: light; }
+
+/* ── Base ─────────────────────────────────────────── */
+.gradio-container {
+    background: #f0f4f5 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
+* {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+/* Force all input and textarea elements to white background with dark text */
+textarea,
+input[type="text"],
+input[type="number"],
+input[type="search"],
+.block textarea,
+.wrap textarea {
+    background: #ffffff !important;
+    color: #212b32 !important;
+    border-color: #aeb7bd !important;
+}
+
+/* ── Brand header ─────────────────────────────────── */
+/* Zero the HTML wrapper padding so the blue card spans the full content
+   width, matching the accordion below it. */
+#brand-header-block {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
+#medilens-header {
+    background: #005eb8;
+    border-radius: 24px;
+    padding: 24px 28px 20px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 3px rgba(0, 94, 184, 0.30), 0 6px 16px rgba(0, 94, 184, 0.18);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+#medilens-header .brand-logo {
+    height: 60px;
+    width: auto;
+    flex: 0 0 auto;
+}
+#medilens-header h2 {
+    color: white !important;
+    font-size: 1.75rem !important;
+    font-weight: 700 !important;
+    margin: 0 0 4px 0 !important;
+    letter-spacing: -0.01em !important;
+}
+#medilens-header p {
+    color: #aed6f1 !important;
+    margin: 0 !important;
+    font-size: 0.9rem !important;
+    line-height: 1.5 !important;
+}
+
+/* ── Intro text (hide h1, style paragraph) ─────────── */
+#intro-text .prose h1,
+#intro-text h1 {
+    display: none !important;
+}
+#intro-text {
+    background: #e8f4fe !important;
+    border-left: 4px solid #005eb8 !important;
+    padding: 12px 16px !important;
+    border-radius: 0 16px 16px 0 !important;
+    box-shadow: none !important;
+    margin-bottom: 4px !important;
+}
+#intro-text p {
+    color: #212b32 !important;
+    font-size: 0.9rem !important;
+    margin: 0 !important;
+    line-height: 1.6 !important;
+}
+
+/* ── Top panels ───────────────────────────────────── */
+#top-left-panel,
+#top-right-panel {
+    background: white !important;
+    border-radius: 20px !important;
+    padding: 24px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+    border: 1px solid #e3e8eb !important;
+    min-height: 480px;
+}
+
+/* ── Image upload ─────────────────────────────────── */
+/* Fixed-height image box so nothing shifts between empty and uploaded states */
+#medicine-image {
+    height: 250px !important;
+    min-height: 250px !important;
+    max-height: 250px !important;
+    border-radius: 16px;
+    border: 2px dashed #aeb7bd !important;
+    background: #f0f4f5;
+    position: relative !important;
+    overflow: hidden !important;
+}
+/* Pin the upload/webcam buttons at a fixed spot near the top; never moves */
+#medicine-image .source-selection {
+    position: absolute !important;
+    top: 6px !important;
+    left: 8px !important;
+    right: 8px !important;
+    z-index: 5 !important;
+    background: #f0f4f5 !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    border: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+#medicine-image .source-selection button {
+    margin: 0 6px !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    border: none !important;
+}
+/* Reserve space at the top so the photo sits below the buttons (does not cover them) */
+#medicine-image .image-container {
+    height: 250px !important;
+    padding-top: 52px !important;
+    box-sizing: border-box !important;
+}
+#medicine-image .image-frame,
+#medicine-image .image-preview,
+#medicine-image img {
+    max-height: 185px !important;
+    object-fit: contain !important;
+}
+
+/* ── Match HTML card ──────────────────────────────── */
+#match-output {
+    background: #e8f4fe;
+    border: 1px solid #aed6f1;
+    border-radius: 16px;
+    padding: 10px 16px;
+    min-height: 69px;
+    margin: 0 -3px 4px -3px;
+    width: calc(100% + 6px);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+.match-card .match-medicine-name {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #212b32;
+    margin: 0 0 5px 0;
+    line-height: 1.25;
+}
+.match-na {
+    color: #768692;
+    font-style: italic;
+    margin: 0;
+    padding: 6px 0;
+    font-size: 0.9rem;
+}
+.confidence-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+.confidence-high   { background: #d4edda; color: #155724; border: 1px solid #b8dfc4; }
+.confidence-medium { background: #fff3cd; color: #7a5000; border: 1px solid #ffe69c; }
+.confidence-low    { background: #f8d7da; color: #6b1a22; border: 1px solid #f1b0b7; }
+
+/* ── Explanation output (Medicine use) ────────────── */
+#explanation-output textarea {
+    background: #eafaf0 !important;
+    border-color: #b7e0c4 !important;
+    color: #212b32 !important;
+    border-left: 4px solid #007f3b !important;
+    border-radius: 0 14px 14px 0 !important;
+    font-size: 0.9rem !important;
+    margin: 0 -2px !important;
+    width: calc(100% + 4px) !important;
+    box-sizing: border-box !important;
+}
+/* Green label pill to match the Medicine use box */
+#explanation-output label span {
+    background: #d4eddb !important;
+    color: #00451f !important;
+    padding: 2px 10px !important;
+    border-radius: 9999px !important;
+}
+
+/* ── Warning output ───────────────────────────────── */
+#warning-output textarea {
+    background: #fff9e6 !important;
+    border-color: #ffb81c !important;
+    color: #4a3700 !important;
+    border-left: 4px solid #ffb81c !important;
+    border-radius: 0 14px 14px 0 !important;
+    font-size: 0.9rem !important;
+    margin: 0 -2px !important;
+    width: calc(100% + 4px) !important;
+    box-sizing: border-box !important;
+}
+/* Amber label pill to match the Safety warning box */
+#warning-output label span {
+    background: #fff3cd !important;
+    color: #4a3700 !important;
+    padding: 2px 10px !important;
+    border-radius: 9999px !important;
+}
+
+/* ── Source URL (HTML) ────────────────────────────── */
+/* Reserve fixed space so the right panel does not resize when the link appears */
+#source-url-output {
+    min-height: 64px;
+}
+.source-url-box {
+    background: #f0f4f5;
+    border: 1px solid #aeb7bd;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    color: #212b32;
+    margin: 0 -2px;
+    width: calc(100% + 4px);
+    box-sizing: border-box;
+}
+.source-url-label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #768692;
+    margin-bottom: 4px;
+}
+.source-url-box a {
+    color: #005eb8;
+    text-decoration: underline;
+    font-weight: 600;
+    word-break: break-all;
+}
+.source-url-box a:hover { color: #003087; }
+
+/* ── OCR textbox (compact) ────────────────────────── */
+#ocr-output textarea {
+    height: 80px !important;
+    min-height: 80px !important;
+    max-height: 80px !important;
+    overflow-y: auto !important;
+    background: #ffffff !important;
+    color: #212b32 !important;
+}
+
+/* ── Read button (NHS green) ──────────────────────── */
+#read-btn button {
+    background: #007f3b !important;
+    border-radius: 9999px !important;
+    font-weight: 600 !important;
+    font-size: 1rem !important;
+    letter-spacing: 0.02em !important;
+    padding: 14px 24px !important;
+    border: none !important;
+    box-shadow: 0 1px 2px rgba(0, 64, 29, 0.30), 0 2px 6px rgba(0, 127, 59, 0.25) !important;
+    color: white !important;
+    width: 100% !important;
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease !important;
+}
+#read-btn button:hover {
+    background: #00662f !important;
+    box-shadow: 0 2px 4px rgba(0, 64, 29, 0.35), 0 6px 16px rgba(0, 127, 59, 0.30) !important;
+}
+#read-btn button:active {
+    transform: translateY(1px) !important;
+    box-shadow: 0 1px 2px rgba(0, 64, 29, 0.30) !important;
+}
+
+/* ── Language selector ────────────────────────────── */
+#language-selector {
+    border: 2px solid #aeb7bd !important;
+    border-radius: 12px !important;
+    background: white !important;
+}
+
+/* ── Manual label callout ─────────────────────────── */
+/* No default group chrome (avoids a stray grey bar under the field) */
+#manual-label-section {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+/* Invisible flag: drives the field highlight via :has, shows no text/box */
+#manual-label-helper {
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    overflow: hidden !important;
+}
+#manual-label-section:has(#manual-label-helper:not([style*="display: none"])) {
+    border: 2px solid #ffb81c !important;
+    border-radius: 12px !important;
+    padding: 8px !important;
+    background: #fff9e6 !important;
+}
+#manual-label-section:has(#manual-label-helper:not([style*="display: none"])) #manual-label-input textarea {
+    border-color: #ffb81c !important;
+    box-shadow: 0 0 0 2px rgba(255, 184, 28, 0.3) !important;
+}
+
+/* ── Model note text ──────────────────────────────── */
+#model-note {
+    background: #eef6fd !important;
+    border-left: 4px solid #aed6f1 !important;
+    padding: 12px 16px !important;
+    border-radius: 0 16px 16px 0 !important;
+    margin-top: 4px !important;
+}
+#model-note, #model-note p {
+    color: #425563 !important;
+    font-size: 0.85rem !important;
+    line-height: 1.6 !important;
+}
+
+/* ── Glossary note ────────────────────────────────── */
+#glossary-note {
+    border-left: 4px solid #005eb8;
+    padding: 8px 12px;
+    background: #e8f4fe;
+    border-radius: 0 14px 14px 0;
+    color: #212b32 !important;
+}
+#glossary-note p { color: #212b32 !important; }
+
+/* ── Progress ─────────────────────────────────────── */
+/* Fixed height so the left panel never grows when "Processing image..." appears */
+#processing-progress {
+    height: 20px !important;
+    min-height: 20px !important;
+    margin: 2px 0 0 0 !important;
+    overflow: hidden;
+}
+#read-action-section { gap: 2px !important; }
+#read-action-section > .form,
+#read-action-section .block {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+.single-progress-status {
+    font-size: 12px;
+    line-height: 18px;
+    color: #425563;
+}
+
+/* ── Technical panels ─────────────────────────────── */
+#technical-left-panel,
+#technical-right-panel {
+    min-height: 200px;
+}
+
+/* ── Phone optimization ───────────────────────────── */
+@media (max-width: 600px) {
+    #medilens-header {
+        border-radius: 16px;
+        padding: 16px 18px;
+        gap: 12px;
+    }
+    #medilens-header .brand-logo { height: 44px; }
+    #medilens-header h2 { font-size: 1.4rem !important; }
+    #medilens-header p { font-size: 0.8rem !important; }
+    #intro-text { padding: 10px 12px !important; }
+    #intro-text p { font-size: 0.85rem !important; }
+    #top-left-panel,
+    #top-right-panel {
+        padding: 16px !important;
+        min-height: 0 !important;
+        border-radius: 16px !important;
+    }
+    #medicine-image,
+    #medicine-image .image-container {
+        height: 210px !important;
+        min-height: 210px !important;
+        max-height: 210px !important;
+    }
+    #medicine-image .image-frame,
+    #medicine-image .image-preview,
+    #medicine-image img { max-height: 150px !important; }
+    #technical-left-panel,
+    #technical-right-panel { min-height: 0 !important; }
+    #model-note, #model-note p { font-size: 0.8rem !important; }
+}

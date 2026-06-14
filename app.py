@@ -1,48 +1,51 @@
-from pathlib import Path
-import base64
+﻿from pathlib import Path
 import concurrent.futures
-from io import BytesIO
 import os
-import re
-import shutil
-import socket
-import subprocess
 import threading
 import time
-from urllib.parse import urlparse
 
 import gradio as gr
 import pandas as pd
-import pytesseract
-import requests
 from pytesseract import TesseractNotFoundError
-from PIL import Image, ImageFilter, ImageOps
-from rapidfuzz import fuzz
+from PIL import Image
+
+from medilens_core.config import (
+    DEFAULT_IMAGE_IDENTIFICATION_SECONDS,
+    DEFAULT_MODEL_URL,
+    DEFAULT_VISION_OCR_URL,
+    DEVICE_DESKTOP_OR_LAPTOP,
+    DEVICE_PHONE_OR_TABLET,
+    IMAGE_SOURCE_UPLOAD,
+    IMAGE_SOURCE_WEBCAM,
+    MAX_IMAGE_IDENTIFICATION_SECONDS,
+    MIN_IMAGE_IDENTIFICATION_SECONDS,
+    MINICPM_V_MODEL_REF,
+    OCR_MATCH_MIN_SCORE,
+    ORIENTATION_FULL_AUTO,
+    ORIENTATION_MIRRORED_FIRST,
+    ORIENTATION_NORMAL_FIRST,
+    TINY_AYA_MODEL_REF,
+    normalize_image_timeout_seconds,
+)
+from medilens_core.database import load_glossary_suggestions, load_medicines, submit_glossary_suggestion
+from medilens_core.explanations import make_explanation, translate_medicine_warning
+from medilens_core.matching import apply_manual_match_safety, capitalize_name, clean_text, find_best_match
+from medilens_core.messages import GENERAL_SAFETY_WARNING, manual_entry_prompt, no_database_info_message
+from medilens_core.models import (
+    check_local_model_servers,
+    is_port_reachable,
+    normalize_local_url,
+    start_llama_server,
+    start_local_model_servers,
+)
+from medilens_core.ocr import choose_readable_image_orientation, readable_image_candidates, run_ocr, run_vision_ocr
 
 
-DATA_FILE = Path(__file__).with_name("medicines.csv")
-GLOSSARY_FILE = Path(__file__).with_name("translation_glossary.csv")
-GLOSSARY_SUGGESTIONS_FILE = Path(__file__).with_name("translation_glossary_suggestions.csv")
-WINDOWS_TESSERACT_PATH = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
-DEFAULT_MODEL_URL = os.getenv("TINY_AYA_MODEL_URL", "http://127.0.0.1:8080/v1/chat/completions")
-DEFAULT_VISION_OCR_URL = os.getenv("MINICPM_V_OCR_URL", "http://127.0.0.1:8081/v1/chat/completions")
-TINY_AYA_MODEL_REF = os.getenv("TINY_AYA_MODEL_REF", "CohereLabs/tiny-aya-global-GGUF:Q4_K_M")
-MINICPM_V_MODEL_REF = os.getenv("MINICPM_V_MODEL_REF", "openbmb/MiniCPM-V-4.6-gguf:Q4_K_M")
 APP_SERVER_NAME = os.getenv("MEDILENS_SERVER_NAME")
 APP_SERVER_PORT = int(os.getenv("MEDILENS_SERVER_PORT", "7860"))
 APP_SHARE = os.getenv("MEDILENS_SHARE", "").strip().lower() in {"1", "true", "yes", "on"}
-MEDIUM_CONFIDENCE_MIN_SCORE = 80
-HIGH_CONFIDENCE_MIN_SCORE = 90
-MANUAL_MATCH_MIN_SCORE = 90
-OCR_MATCH_MIN_SCORE = 90
-DEFAULT_IMAGE_IDENTIFICATION_SECONDS = 60
-MIN_IMAGE_IDENTIFICATION_SECONDS = 10
-MAX_IMAGE_IDENTIFICATION_SECONDS = 99
 RESPONSE_VERSION = 0
 RESPONSE_VERSION_LOCK = threading.Lock()
-
-if shutil.which("tesseract") is None and WINDOWS_TESSERACT_PATH.exists():
-    pytesseract.pytesseract.tesseract_cmd = str(WINDOWS_TESSERACT_PATH)
 
 
 def next_response_version() -> int:
@@ -85,193 +88,6 @@ def progress_bar_html(elapsed_seconds: float, total_seconds: int, status: str):
     )
 
 
-def normalize_local_url(url: str, default_url: str) -> str:
-    cleaned_url = (url or "").strip() or default_url
-    if "://" not in cleaned_url:
-        cleaned_url = f"http://{cleaned_url}"
-    return cleaned_url
-
-
-def parse_host_port(url: str) -> tuple[str, int]:
-    parsed = urlparse(url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    return host, port
-
-
-def is_port_reachable(url: str, timeout: float = 1.0) -> bool:
-    try:
-        host, port = parse_host_port(url)
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-def _normalize_token(text: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", text.lower())
-
-
-def _llama_cache_dirs() -> list:
-    dirs = []
-    env_cache = os.getenv("LLAMA_CACHE")
-    if env_cache:
-        dirs.append(Path(env_cache))
-    if os.name == "nt":
-        local_appdata = os.getenv("LOCALAPPDATA")
-        if local_appdata:
-            dirs.append(Path(local_appdata) / "llama.cpp")
-    xdg_cache = os.getenv("XDG_CACHE_HOME")
-    if xdg_cache:
-        dirs.append(Path(xdg_cache) / "llama.cpp")
-    home = Path.home()
-    dirs.append(home / "Library" / "Caches" / "llama.cpp")
-    dirs.append(home / ".cache" / "llama.cpp")
-    return [d for d in dirs if d.is_dir()]
-
-
-def model_is_downloaded(model_ref: str) -> bool:
-    """True if the GGUF for model_ref is already cached locally (no download needed)."""
-    ref = model_ref.split(":", 1)[0]
-    user, _, repo = ref.partition("/")
-    if not repo:
-        user, repo = "", ref
-    repo_core = re.sub(r"(?i)gguf", "", repo)
-    candidates = {_normalize_token(repo_core)}
-    tokens = [t for t in re.split(r"[^A-Za-z0-9]+", repo_core) if t]
-    if tokens:
-        candidates.add(_normalize_token("".join(tokens[:2])))
-    candidates = {c for c in candidates if len(c) >= 4}
-
-    # 1. llama.cpp's own -hf cache
-    for cache_dir in _llama_cache_dirs():
-        try:
-            for gguf in cache_dir.rglob("*.gguf"):
-                name_norm = _normalize_token(gguf.name)
-                if any(c in name_norm for c in candidates):
-                    return True
-        except OSError:
-            continue
-
-    # 2. Hugging Face hub cache (models--user--repo/snapshots/.../*.gguf)
-    hub_dirs = []
-    hf_home = os.getenv("HF_HOME")
-    if hf_home:
-        hub_dirs.append(Path(hf_home) / "hub")
-    hub_dirs.append(Path.home() / ".cache" / "huggingface" / "hub")
-    repo_dir_name = f"models--{user}--{repo}" if user else f"models--{repo}"
-    for hub in hub_dirs:
-        repo_dir = hub / repo_dir_name
-        if repo_dir.is_dir():
-            try:
-                if any(repo_dir.rglob("*.gguf")):
-                    return True
-            except OSError:
-                continue
-    return False
-
-
-def start_llama_server(model_ref: str, url: str) -> str:
-    if is_port_reachable(url):
-        host, port = parse_host_port(url)
-        return f"Already running on {host}:{port}."
-
-    llama_server = shutil.which("llama-server")
-    if not llama_server:
-        return "Could not find llama-server on PATH. Open a new terminal after installing llama.cpp, or start llama-server manually."
-
-    if not model_is_downloaded(model_ref):
-        return (
-            f"Model not downloaded, so it was not started. "
-            f"Download it once in a terminal, then use this button again: "
-            f"llama-server -hf {model_ref}"
-        )
-
-    _, port = parse_host_port(url)
-    command = [llama_server, "-hf", model_ref, "--port", str(port)]
-    kwargs = {
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "stdin": subprocess.DEVNULL,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-
-    try:
-        subprocess.Popen(command, **kwargs)
-    except OSError as error:
-        return f"Could not start llama-server: {error}"
-
-    return f"Starting in the background on port {port}. Wait a minute for the model to load, then try again."
-
-
-def start_local_model_servers(vision_ocr_url: str, model_url: str) -> str:
-    vision_ocr_url = normalize_local_url(vision_ocr_url, DEFAULT_VISION_OCR_URL)
-    model_url = normalize_local_url(model_url, DEFAULT_MODEL_URL)
-    minicpm_status = start_llama_server(MINICPM_V_MODEL_REF, vision_ocr_url)
-    tiny_aya_status = start_llama_server(TINY_AYA_MODEL_REF, model_url)
-    return f"MiniCPM-V OCR: {minicpm_status}\nTiny Aya: {tiny_aya_status}"
-
-
-def check_local_model_servers(vision_ocr_url: str, model_url: str) -> str:
-    vision_ocr_url = normalize_local_url(vision_ocr_url, DEFAULT_VISION_OCR_URL)
-    model_url = normalize_local_url(model_url, DEFAULT_MODEL_URL)
-    minicpm_status = "reachable" if is_port_reachable(vision_ocr_url) else "not reachable"
-    tiny_aya_status = "reachable" if is_port_reachable(model_url) else "not reachable"
-    return f"MiniCPM-V OCR: {minicpm_status}\nTiny Aya: {tiny_aya_status}"
-
-
-GENERAL_SAFETY_WARNING = {
-    "English": (
-        "Do not take this medicine unless it was prescribed for you. "
-        "If you are unsure what this medicine is or whether it is safe for you, "
-        "ask a pharmacist, doctor, or other qualified healthcare professional."
-    ),
-    "French": (
-        "Ne prenez pas ce medicament sauf s'il vous a ete prescrit. "
-        "Si vous n'etes pas sur de ce qu'est ce medicament ou s'il est sans danger pour vous, "
-        "demandez conseil a un pharmacien, un medecin ou un autre professionnel de sante qualifie."
-    ),
-    "German": (
-        "Nehmen Sie dieses Arzneimittel nicht ein, es sei denn, es wurde Ihnen verschrieben. "
-        "Wenn Sie unsicher sind, was dieses Arzneimittel ist oder ob es fuer Sie sicher ist, "
-        "fragen Sie einen Apotheker, Arzt oder eine andere qualifizierte medizinische Fachperson."
-    ),
-    "Italian": (
-        "Non prendere questo medicinale a meno che non sia stato prescritto per te. "
-        "Se non sei sicuro di che medicinale sia o se sia sicuro per te, "
-        "chiedi a un farmacista, medico o altro professionista sanitario qualificato."
-    ),
-    "Spanish": (
-        "No tome este medicamento a menos que se lo hayan recetado. "
-        "Si no esta seguro de que medicamento es o si es seguro para usted, "
-        "consulte a un farmaceutico, medico u otro profesional sanitario cualificado."
-    ),
-    "Romanian": (
-        "Nu lua acest medicament decat daca ti-a fost prescris. "
-        "Daca nu esti sigur ce este acest medicament sau daca este sigur pentru tine, "
-        "intreaba un farmacist, un medic sau un alt profesionist medical calificat."
-    ),
-}
-
-LOW_CONFIDENCE_MESSAGE = {
-    "English": "I could not confidently identify the medicine. Please try a clearer photo or ask a pharmacist.",
-    "French": "Je n'ai pas pu identifier ce medicament avec suffisamment de confiance. Essayez une photo plus claire ou demandez conseil a un pharmacien.",
-    "German": "Ich konnte das Arzneimittel nicht sicher identifizieren. Bitte versuchen Sie ein klareres Foto oder fragen Sie einen Apotheker.",
-    "Italian": "Non sono riuscito a identificare il medicinale con sicurezza. Prova una foto piu chiara o chiedi a un farmacista.",
-    "Spanish": "No pude identificar el medicamento con suficiente confianza. Pruebe con una foto mas clara o consulte a un farmaceutico.",
-    "Romanian": "Nu am putut identifica medicamentul cu incredere. Incearca o fotografie mai clara sau intreaba un farmacist.",
-}
-
-CONFIRM_MESSAGE = {
-    "English": "Please confirm this with a pharmacist if unsure.",
-    "French": "Veuillez confirmer cela avec un pharmacien si vous avez un doute.",
-    "German": "Bitte bestaetigen Sie dies bei einem Apotheker, wenn Sie unsicher sind.",
-    "Italian": "Conferma con un farmacista se non sei sicuro.",
-    "Spanish": "Confirme esto con un farmaceutico si no esta seguro.",
-    "Romanian": "Te rugam sa confirmi cu un farmacist daca nu esti sigur.",
-}
-
 UI_LABELS = {
     "English": {
         "intro": "Upload a photo of a medicine label. This tool tries to read the label and explain what the medicine is commonly used for. It does not replace a pharmacist or doctor.",
@@ -285,7 +101,7 @@ UI_LABELS = {
         "explanation": "Medicine use",
         "warning": "Safety warning",
         "source_url": "Source URL",
-        "model_note": "This app uses two small local AI models: MiniCPM-V OCR and Tiny Aya Global. Medicine information comes from a database of 200 medicines, with medicine uses and safety warnings based on NHS Medicines A to Z and the British National Formulary.",
+        "model_note": "This app uses two small local AI models: MiniCPM-V 4.6 and Tiny Aya Global. Medicine information comes from a database of 200 medicines, with medicine uses and safety warnings based on NHS Medicines A to Z and the British National Formulary.",
         "glossary_title": "Improve translation",
         "glossary_note": "Tiny Aya is useful for translation, but it is not perfect. You can suggest better wording for the translation glossary. Suggestions are public and must be reviewed before they are added. Thank you for helping improve the app.",
         "glossary_language": "Language",
@@ -306,7 +122,7 @@ UI_LABELS = {
         "explanation": "Utilisation du medicament",
         "warning": "Avertissement de securite",
         "source_url": "URL source",
-        "model_note": "Cette application utilise deux petits modeles d'IA locaux : MiniCPM-V OCR et Tiny Aya Global. Les informations proviennent d'une base de donnees de 200 medicaments ; les usages et les avertissements de securite reposent sur NHS Medicines A to Z et le British National Formulary.",
+        "model_note": "Cette application utilise deux petits modeles d'IA locaux : MiniCPM-V 4.6 et Tiny Aya Global. Les informations proviennent d'une base de donnees de 200 medicaments ; les usages et les avertissements de securite reposent sur NHS Medicines A to Z et le British National Formulary.",
         "glossary_title": "Ameliorer la traduction",
         "glossary_note": "Tiny Aya est utile pour la traduction, mais il n'est pas parfait. Vous pouvez suggerer de meilleures formulations pour le glossaire de traduction. Les suggestions sont publiques et doivent etre verifiees avant d'etre ajoutees. Merci d'aider a ameliorer l'application.",
         "glossary_language": "Langue",
@@ -327,7 +143,7 @@ UI_LABELS = {
         "explanation": "Verwendung des Arzneimittels",
         "warning": "Sicherheitshinweis",
         "source_url": "Quellen-URL",
-        "model_note": "Diese App verwendet zwei kleine lokale KI-Modelle: MiniCPM-V OCR und Tiny Aya Global. Die Arzneimittelinformationen stammen aus einer Datenbank mit 200 Arzneimitteln; Anwendung und Sicherheitshinweise basieren auf NHS Medicines A to Z und dem British National Formulary.",
+        "model_note": "Diese App verwendet zwei kleine lokale KI-Modelle: MiniCPM-V 4.6 und Tiny Aya Global. Die Arzneimittelinformationen stammen aus einer Datenbank mit 200 Arzneimitteln; Anwendung und Sicherheitshinweise basieren auf NHS Medicines A to Z und dem British National Formulary.",
         "glossary_title": "Uebersetzung verbessern",
         "glossary_note": "Tiny Aya ist fuer Uebersetzungen nuetzlich, aber nicht perfekt. Sie koennen bessere Formulierungen fuer das Uebersetzungsglossar vorschlagen. Vorschlaege sind oeffentlich und muessen geprueft werden, bevor sie hinzugefuegt werden. Vielen Dank fuer Ihre Hilfe.",
         "glossary_language": "Sprache",
@@ -348,7 +164,7 @@ UI_LABELS = {
         "explanation": "Uso del medicinale",
         "warning": "Avvertenza di sicurezza",
         "source_url": "URL fonte",
-        "model_note": "Questa app usa due piccoli modelli IA locali: MiniCPM-V OCR e Tiny Aya Global. Le informazioni provengono da un database di 200 medicinali; usi e avvertenze di sicurezza si basano su NHS Medicines A to Z e British National Formulary.",
+        "model_note": "Questa app usa due piccoli modelli IA locali: MiniCPM-V 4.6 e Tiny Aya Global. Le informazioni provengono da un database di 200 medicinali; usi e avvertenze di sicurezza si basano su NHS Medicines A to Z e British National Formulary.",
         "glossary_title": "Migliora traduzione",
         "glossary_note": "Tiny Aya e utile per la traduzione, ma non e perfetto. Puoi suggerire frasi migliori per il glossario di traduzione. I suggerimenti sono pubblici e devono essere controllati prima di essere aggiunti. Grazie per aiutare a migliorare l'app.",
         "glossary_language": "Lingua",
@@ -369,7 +185,7 @@ UI_LABELS = {
         "explanation": "Utilizarea medicamentului",
         "warning": "Avertisment de siguranta",
         "source_url": "URL sursa",
-        "model_note": "Aceasta aplicatie foloseste doua modele AI locale mici: MiniCPM-V OCR si Tiny Aya Global. Informatiile provin dintr-o baza de date cu 200 de medicamente; utilizarea medicamentelor si avertismentele de siguranta se bazeaza pe NHS Medicines A to Z si British National Formulary.",
+        "model_note": "Aceasta aplicatie foloseste doua modele AI locale mici: MiniCPM-V 4.6 si Tiny Aya Global. Informatiile provin dintr-o baza de date cu 200 de medicamente; utilizarea medicamentelor si avertismentele de siguranta se bazeaza pe NHS Medicines A to Z si British National Formulary.",
         "glossary_title": "Imbunatateste traducerea",
         "glossary_note": "Tiny Aya este util pentru traducere, dar nu este perfect. Poti sugera formulari mai bune pentru glosarul de traducere. Sugestiile sunt publice si trebuie verificate inainte de a fi adaugate. Iti multumim ca ajuti la imbunatatirea aplicatiei.",
         "glossary_language": "Limba",
@@ -390,7 +206,7 @@ UI_LABELS = {
         "explanation": "Uso del medicamento",
         "warning": "Advertencia de seguridad",
         "source_url": "URL de origen",
-        "model_note": "Esta aplicacion usa dos pequenos modelos locales de IA: MiniCPM-V OCR y Tiny Aya Global. La informacion proviene de una base de datos de 200 medicamentos; los usos y las advertencias de seguridad se basan en NHS Medicines A to Z y British National Formulary.",
+        "model_note": "Esta aplicacion usa dos pequenos modelos locales de IA: MiniCPM-V 4.6 y Tiny Aya Global. La informacion proviene de una base de datos de 200 medicamentos; los usos y las advertencias de seguridad se basan en NHS Medicines A to Z y British National Formulary.",
         "glossary_title": "Mejorar traduccion",
         "glossary_note": "Tiny Aya es util para la traduccion, pero no es perfecto. Puede sugerir mejores frases para el glosario de traduccion. Las sugerencias son publicas y deben revisarse antes de anadirse. Gracias por ayudar a mejorar la aplicacion.",
         "glossary_language": "Idioma",
@@ -400,294 +216,6 @@ UI_LABELS = {
         "glossary_table": "Sugerencias publicas pendientes de revision",
     },
 }
-
-
-def load_medicines() -> pd.DataFrame:
-    return pd.read_csv(DATA_FILE).fillna("")
-
-
-def load_glossary() -> pd.DataFrame:
-    if not GLOSSARY_FILE.exists():
-        return pd.DataFrame(columns=["language", "bad_phrase", "preferred_phrase"])
-    return pd.read_csv(GLOSSARY_FILE).fillna("")
-
-
-def load_glossary_suggestions() -> pd.DataFrame:
-    columns = ["language", "bad_phrase", "preferred_phrase"]
-    if not GLOSSARY_SUGGESTIONS_FILE.exists():
-        return pd.DataFrame(columns=columns)
-    return pd.read_csv(GLOSSARY_SUGGESTIONS_FILE).fillna("")
-
-
-def submit_glossary_suggestion(language: str, bad_phrase: str, preferred_phrase: str):
-    bad_phrase = (bad_phrase or "").strip()
-    preferred_phrase = (preferred_phrase or "").strip()
-
-    if not bad_phrase or not preferred_phrase:
-        return load_glossary_suggestions(), bad_phrase, preferred_phrase
-
-    suggestions = load_glossary_suggestions()
-    new_row = pd.DataFrame(
-        [{"language": language, "bad_phrase": bad_phrase, "preferred_phrase": preferred_phrase}]
-    )
-    suggestions = pd.concat([new_row, suggestions], ignore_index=True)
-    suggestions.to_csv(GLOSSARY_SUGGESTIONS_FILE, index=False, encoding="utf-8")
-    return suggestions, "", ""
-
-
-def glossary_rules(language: str) -> str:
-    glossary = load_glossary()
-    if glossary.empty:
-        return ""
-
-    rows = glossary[glossary["language"].str.lower() == language.lower()]
-    rules = []
-    for _, row in rows.iterrows():
-        bad_phrase = str(row["bad_phrase"]).strip()
-        preferred_phrase = str(row["preferred_phrase"]).strip()
-        if bad_phrase and preferred_phrase:
-            rules.append(f'- Do not say "{bad_phrase}". Say "{preferred_phrase}" instead.')
-
-    if not rules:
-        return ""
-
-    return "Wording rules:\n" + "\n".join(rules)
-
-
-def apply_glossary(text: str, language: str) -> str:
-    glossary = load_glossary()
-    if glossary.empty or not text:
-        return text
-
-    rows = glossary[glossary["language"].str.lower() == language.lower()]
-    cleaned_text = text
-    for _, row in rows.iterrows():
-        bad_phrase = str(row["bad_phrase"]).strip()
-        preferred_phrase = str(row["preferred_phrase"]).strip()
-        if bad_phrase and preferred_phrase:
-            cleaned_text = re.sub(re.escape(bad_phrase), preferred_phrase, cleaned_text, flags=re.IGNORECASE)
-
-    return cleaned_text
-
-
-def clean_text(text: str) -> str:
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9\s;/-]", " ", text)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-
-def confidence_label(score: int) -> str:
-    if score >= HIGH_CONFIDENCE_MIN_SCORE:
-        return "high"
-    if score >= MEDIUM_CONFIDENCE_MIN_SCORE:
-        return "medium"
-    return "low"
-
-
-def text_chunks(text: str) -> list[str]:
-    tokens = re.findall(r"[a-z0-9]+", clean_text(text))
-    chunks = set(tokens)
-
-    for size in range(2, 5):
-        for index in range(len(tokens) - size + 1):
-            chunks.add(" ".join(tokens[index : index + size]))
-
-    return list(chunks)
-
-
-def score_name_against_ocr(name: str, chunks: list[str]) -> int:
-    cleaned_name = clean_text(name)
-    if not cleaned_name or not chunks:
-        return 0
-
-    if cleaned_name in chunks:
-        return 100
-
-    scores = [fuzz.ratio(cleaned_name, chunk) for chunk in chunks]
-    return int(round(max(scores, default=0)))
-
-
-def find_best_match(ocr_text: str, medicines: pd.DataFrame) -> dict:
-    chunks = text_chunks(ocr_text)
-    best = {
-        "score": 0,
-        "matched_name": "",
-        "row": None,
-    }
-
-    for _, row in medicines.iterrows():
-        brand_names = [name.strip() for name in row["brand_names"].split(";") if name.strip()]
-        names = brand_names + [row["generic_name"]]
-
-        for name in names:
-            score = score_name_against_ocr(name, chunks)
-            if score > best["score"]:
-                best = {
-                    "score": score,
-                    "matched_name": name,
-                    "row": row,
-                }
-
-    best["confidence"] = confidence_label(best["score"])
-    return best
-
-
-def apply_manual_match_safety(match: dict) -> dict:
-    if match["score"] < MANUAL_MATCH_MIN_SCORE:
-        match["confidence"] = "low"
-    return match
-
-
-def prepare_image_for_ocr(image: Image.Image) -> Image.Image:
-    gray = ImageOps.grayscale(image)
-
-    width, height = gray.size
-    scale = max(1, 1600 // max(width, height))
-    if scale > 1:
-        gray = gray.resize((width * scale, height * scale), Image.Resampling.LANCZOS)
-
-    gray = ImageOps.autocontrast(gray)
-    gray = gray.filter(ImageFilter.SHARPEN)
-    return gray.point(lambda pixel: 255 if pixel > 160 else 0)
-
-
-def ocr_quality_score(text: str) -> int:
-    tokens = re.findall(r"[a-z0-9]+", clean_text(text))
-    useful_tokens = [token for token in tokens if len(token) > 1]
-    alpha_chars = sum(1 for char in text if char.isalpha())
-    digit_chars = sum(1 for char in text if char.isdigit())
-    symbol_chars = sum(1 for char in text if not char.isalnum() and not char.isspace())
-    one_letter_tokens = sum(1 for token in tokens if len(token) == 1)
-
-    return (
-        len(useful_tokens) * 20
-        + min(alpha_chars, 500)
-        + min(digit_chars, 80)
-        - symbol_chars * 4
-        - one_letter_tokens * 8
-    )
-
-
-def run_ocr(image: Image.Image, medicines: pd.DataFrame) -> str:
-    prepared_image = prepare_image_for_ocr(image)
-    attempts = []
-
-    for candidate_image in [image, prepared_image]:
-        for config in ["--psm 6", "--psm 11", "--psm 12", "--psm 7", "--psm 8", "--psm 13"]:
-            text = pytesseract.image_to_string(candidate_image, config=config).strip()
-            if text:
-                match = find_best_match(text, medicines)
-                attempts.append((ocr_quality_score(text), match["score"], len(clean_text(text)), text))
-
-    if not attempts:
-        return ""
-
-    attempts.sort(reverse=True)
-    combined_texts = []
-    seen = set()
-    for _, _, _, text in attempts:
-        cleaned = clean_text(text)
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            combined_texts.append(text)
-
-    return "\n\n".join(combined_texts[:4])
-
-
-def orientation_score(ocr_text: str, medicines: pd.DataFrame) -> int:
-    if not ocr_text:
-        return 0
-    match = find_best_match(ocr_text, medicines)
-    return ocr_quality_score(ocr_text) + (match["score"] * 3)
-
-
-ORIENTATION_NORMAL_FIRST = "Normal first"
-ORIENTATION_MIRRORED_FIRST = "Mirrored first"
-ORIENTATION_FULL_AUTO = "Full auto"
-DEVICE_PHONE_OR_TABLET = "phone_or_tablet"
-DEVICE_DESKTOP_OR_LAPTOP = "desktop_or_laptop"
-IMAGE_SOURCE_UPLOAD = "upload"
-IMAGE_SOURCE_WEBCAM = "webcam"
-
-
-def readable_image_candidates(image: Image.Image, orientation_mode: str = ORIENTATION_NORMAL_FIRST):
-    rotated_180 = image.rotate(180, expand=True)
-    original = ("", image)
-    mirrored = ("Image was horizontally unmirrored before OCR/model reading.", ImageOps.mirror(image))
-    rotated_mirrored = (
-        "Image was rotated 180 degrees and horizontally unmirrored before OCR/model reading.",
-        ImageOps.mirror(rotated_180),
-    )
-    rotated = ("Image was rotated 180 degrees before OCR/model reading.", rotated_180)
-    vertically_flipped = ("Image was vertically flipped before OCR/model reading.", ImageOps.flip(image))
-    rotated_flipped = (
-        "Image was rotated 180 degrees and vertically flipped before OCR/model reading.",
-        ImageOps.flip(rotated_180),
-    )
-
-    if orientation_mode == ORIENTATION_MIRRORED_FIRST:
-        return [mirrored, original]
-    if orientation_mode == ORIENTATION_FULL_AUTO:
-        return [
-            original,
-            mirrored,
-            rotated_mirrored,
-            rotated,
-            vertically_flipped,
-            rotated_flipped,
-        ]
-
-    return [
-        original,
-        mirrored,
-    ]
-
-
-def choose_readable_image_orientation(
-    image: Image.Image,
-    medicines: pd.DataFrame,
-    orientation_mode: str = ORIENTATION_NORMAL_FIRST,
-):
-    scored_candidates = []
-    for note, candidate_image in readable_image_candidates(image, orientation_mode):
-        candidate_text = run_ocr(candidate_image, medicines)
-        scored_candidates.append((orientation_score(candidate_text, medicines), note, candidate_image, candidate_text))
-
-    original_score, _original_note, original_image, original_text = next(
-        candidate for candidate in scored_candidates if not candidate[1]
-    )
-    best_score, best_note, best_image, best_text = max(scored_candidates, key=lambda item: item[0])
-    if best_score > original_score + 25:
-        return best_image, best_text, best_note
-
-    return original_image, original_text, ""
-
-
-def run_staged_vision_ocr(
-    image: Image.Image,
-    vision_ocr_url: str,
-    medicines: pd.DataFrame,
-    orientation_mode: str,
-    deadline: float,
-):
-    attempts = []
-    for note, candidate_image in readable_image_candidates(image, orientation_mode):
-        remaining_seconds = deadline - time.monotonic()
-        if remaining_seconds <= 0:
-            break
-        vision_text = run_vision_ocr(candidate_image, vision_ocr_url, timeout=max(1.0, remaining_seconds))
-        vision_match = find_best_match(vision_text, medicines)
-        attempts.append((vision_match["score"], note, candidate_image, vision_text, vision_match))
-        if vision_match["score"] >= OCR_MATCH_MIN_SCORE:
-            return candidate_image, note, vision_text, vision_match, attempts, False
-
-    if not attempts:
-        empty_match = {"score": 0, "matched_name": "", "row": None, "confidence": "low"}
-        return image, "", "", empty_match, attempts, True
-
-    _score, note, candidate_image, vision_text, vision_match = max(attempts, key=lambda attempt: attempt[0])
-    return candidate_image, note, vision_text, vision_match, attempts, time.monotonic() >= deadline
 
 
 def pending_read_response(progress_update):
@@ -796,40 +324,6 @@ def run_staged_vision_ocr_with_progress(
     return candidate_image, note, vision_text, vision_match, attempts, time.monotonic() >= deadline
 
 
-def image_to_data_url(image: Image.Image) -> str:
-    buffer = BytesIO()
-    image.save(buffer, format="PNG")
-    image_base64 = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{image_base64}"
-
-
-def run_vision_ocr(image: Image.Image, vision_ocr_url: str, timeout: float = 180) -> str:
-    prompt = (
-        "Read the medication package label in this image. "
-        "Return only the text that appears on the label. "
-        "Focus on the brand name, generic or active ingredient, strength, and medicine type. "
-        "Do not explain the medicine. Do not guess words that are not visible."
-    )
-    payload = {
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_to_data_url(image)}},
-                ],
-            }
-        ],
-        "max_tokens": 220,
-        "temperature": 0,
-    }
-
-    response = requests.post(vision_ocr_url, json=payload, timeout=timeout)
-    response.raise_for_status()
-    data = response.json()
-    return data["choices"][0]["message"]["content"].strip()
-
-
 MATCH_NA_HTML = '<p class="match-na">N/A</p>'
 MATCH_OCR_SETUP_HTML = '<p class="match-na">OCR setup needed</p>'
 
@@ -844,11 +338,6 @@ def source_url_html(url: str) -> str:
         f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>'
         f"</div>"
     )
-
-
-def capitalize_name(name: str) -> str:
-    name = (name or "").strip()
-    return name[:1].upper() + name[1:] if name else name
 
 
 def likely_match_text(match: dict) -> str:
@@ -867,255 +356,13 @@ def likely_match_text(match: dict) -> str:
         display_name = f"{capitalize_name(matched_name)} / {capitalize_name(generic_name)}"
 
     badge_class = f"confidence-{confidence}"
-    badge_label = f"{confidence.capitalize()} confidence · {score}/100"
+    badge_label = f"{confidence.capitalize()} confidence Â· {score}/100"
     return (
         f'<div class="match-card">'
         f'<p class="match-medicine-name">{display_name}</p>'
         f'<span class="confidence-badge {badge_class}">{badge_label}</span>'
         f"</div>"
     )
-
-
-def make_template_explanation(match: dict, language: str) -> str:
-    if match["row"] is None or match["confidence"] == "low":
-        return LOW_CONFIDENCE_MESSAGE[language]
-
-    row = match["row"]
-    matched_name = match["matched_name"]
-    generic_name = row["generic_name"]
-    common_uses = row["common_uses"]
-    confirm = CONFIRM_MESSAGE[language]
-
-    if language == "French":
-        return (
-            f"L'etiquette semble indiquer {matched_name}, qui contient {generic_name}. "
-            f"Ce medicament est couramment utilise pour {common_uses}. {confirm}"
-        )
-    if language == "German":
-        return (
-            f"Das Etikett scheint {matched_name} anzugeben, das {generic_name} enthaelt. "
-            f"Dieses Arzneimittel wird haeufig verwendet fuer {common_uses}. {confirm}"
-        )
-    if language == "Romanian":
-        return (
-            f"Eticheta pare sa indice {matched_name}, care contine {generic_name}. "
-            f"Acest medicament este folosit in mod obisnuit pentru {common_uses}. {confirm}"
-        )
-    if language == "Italian":
-        return (
-            f"L'etichetta sembra indicare {matched_name}, che contiene {generic_name}. "
-            f"Questo medicinale e comunemente usato per {common_uses}. {confirm}"
-        )
-    if language == "Spanish":
-        return (
-            f"La etiqueta parece indicar {matched_name}, que contiene {generic_name}. "
-            f"Este medicamento se usa comunmente para {common_uses}. {confirm}"
-        )
-
-    return (
-        f"This looks like {matched_name}, which contains {generic_name}. "
-        f"It is commonly used for {common_uses}. {confirm}"
-    )
-
-
-def build_model_prompt(match: dict, language: str, ocr_text: str) -> str:
-    row = match["row"]
-    rules = glossary_rules(language)
-    return f"""
-You are a cautious medicine-label helper.
-
-Write in {language}.
-Use simple, plain language for a 14 to 15 year old.
-Translate the medicine explanation into {language}.
-Do not give medical advice.
-Do not say the medicine is definitely correct.
-Do not say the medicine is safe for the user.
-Do not give dosage instructions.
-Do not include precautions, warnings, contraindications, side effects, or leaflet advice.
-Do not add a "Precautions", "Note", "Safety", or "Disclaimer" section.
-Never mention tablets, capsules, creams, drops, liquids, inhalers, patches, sprays, or whether the medicine is easy to swallow.
-Only explain what the likely medicine is and what it is commonly used for.
-Do not repeat the same idea in different words.
-Write no more than three short sentences.
-The app displays safety information in a separate panel.
-{rules}
-
-Detected label text:
-{ocr_text}
-
-Likely medicine:
-{match["matched_name"]}
-
-Generic name:
-{row["generic_name"]}
-
-Common uses:
-{row["common_uses"]}
-
-Confidence:
-{match["confidence"]} ({match["score"]}/100)
-
-Write only the user-facing explanation.
-""".strip()
-
-
-def call_local_chat_model(model_url: str, prompt: str, max_tokens: int = 180) -> str:
-    payload = {
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens,
-        "temperature": 0.1,
-    }
-    response = requests.post(model_url, json=payload, timeout=120)
-    response.raise_for_status()
-    data = response.json()
-    return data["choices"][0]["message"]["content"].strip()
-
-
-def make_ai_explanation(match: dict, language: str, ocr_text: str, model_url: str) -> str:
-    if match["row"] is None or match["confidence"] == "low":
-        return LOW_CONFIDENCE_MESSAGE[language]
-
-    prompt = build_model_prompt(match, language, ocr_text)
-
-    try:
-        answer = call_local_chat_model(model_url, prompt)
-    except Exception as error:
-        server_status = start_llama_server(TINY_AYA_MODEL_REF, model_url)
-        fallback = make_template_explanation(match, "English")
-        return (
-            f"Local Tiny Aya server was not reached, so this explanation is shown in English.\n\n"
-            f"{fallback}\n\n"
-            f"Background start attempt: {server_status}\n"
-            f"Check the URL: {model_url}\n"
-            f"Model error: {error}"
-        )
-
-    cleaned_answer = clean_plain_language_explanation(apply_glossary(answer, language))
-    return cleaned_answer or make_template_explanation(match, language)
-
-
-def make_explanation(match: dict, language: str, ocr_text: str, use_ai_model: bool, model_url: str) -> str:
-    if use_ai_model:
-        return make_ai_explanation(match, language, ocr_text, model_url)
-    return make_template_explanation(match, language)
-
-
-def clean_plain_language_explanation(text: str) -> str:
-    form_words = [
-        "tablet",
-        "tablets",
-        "capsule",
-        "capsules",
-        "cream",
-        "creams",
-        "drop",
-        "drops",
-        "liquid",
-        "liquids",
-        "inhaler",
-        "inhalers",
-        "patch",
-        "patches",
-        "spray",
-        "sprays",
-        "easy to swallow",
-    ]
-    sentences = re.split(r"(?<=[.!?])\s+", str(text).strip())
-    kept_sentences = []
-    seen_sentences = set()
-    for sentence in sentences:
-        cleaned_sentence = sentence.strip()
-        if not cleaned_sentence:
-            continue
-        sentence_lower = cleaned_sentence.lower()
-        if any(word in sentence_lower for word in form_words):
-            continue
-        sentence_key = re.sub(r"[^a-z0-9]+", " ", sentence_lower).strip()
-        if sentence_key in seen_sentences:
-            continue
-        seen_sentences.add(sentence_key)
-        kept_sentences.append(cleaned_sentence)
-
-    return " ".join(kept_sentences[:3]).strip()
-
-
-def translate_medicine_warning(warning: str, language: str, use_ai_model: bool, model_url: str) -> str:
-    if not warning:
-        return ""
-    if not use_ai_model:
-        if language == "English":
-            return polish_warning_text(warning)
-        return f"Medicine-specific note shown in English: {polish_warning_text(warning)}"
-
-    prompt = f"""
-Rewrite the medicine-specific warning below into {language}.
-Use simple, plain language.
-Write complete sentences with normal punctuation.
-Keep the meaning cautious and medically neutral.
-Do not add new safety advice.
-Do not add a heading or label.
-Do not add bullet points.
-Do not copy the source text word-for-word if it is only a fragment.
-Do not mention prescriptions unless the source warning mentions prescriptions.
-Do not repeat general advice about asking a pharmacist or doctor unless that exact idea is in the source warning.
-Do not mention the patient information leaflet unless the source warning mentions the patient information leaflet.
-Return one short paragraph only.
-{glossary_rules(language)}
-
-Source warning:
-{warning}
-""".strip()
-
-    try:
-        translated = call_local_chat_model(model_url, prompt, max_tokens=140)
-    except Exception as error:
-        server_status = start_llama_server(TINY_AYA_MODEL_REF, model_url)
-        return (
-            "Local Tiny Aya server was not reached, so this medicine-specific note is shown in English.\n\n"
-            f"{warning}\n\n"
-            f"Background start attempt: {server_status}\n"
-            f"Model error: {error}"
-        )
-
-    return clean_translated_warning(apply_glossary(translated, language), language) or polish_warning_text(warning)
-
-
-def clean_translated_warning(text: str, language: str) -> str:
-    cleaned = text.strip()
-    cleaned = re.sub(r"^\s*\*{0,2}[^:\n]{1,40}:\*{0,2}\s*", "", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return polish_warning_text(cleaned)
-
-
-def polish_warning_text(text: str) -> str:
-    cleaned = re.sub(r"\s+", " ", str(text)).strip()
-    if cleaned and cleaned[-1] not in ".!?":
-        cleaned += "."
-    return cleaned
-
-
-def no_database_info_message(language: str) -> str:
-    messages = {
-        "English": "No information is available for this medicine in the local database.",
-        "French": "Aucune information n'est disponible pour ce medicament dans la base de donnees locale.",
-        "German": "Zu diesem Arzneimittel sind in der lokalen Datenbank keine Informationen verfuegbar.",
-        "Italian": "Non sono disponibili informazioni su questo medicinale nel database locale.",
-        "Romanian": "Nu exista informatii despre acest medicament in baza de date locala.",
-        "Spanish": "No hay informacion disponible sobre este medicamento en la base de datos local.",
-    }
-    return messages[language]
-
-
-def manual_entry_prompt(language: str) -> str:
-    messages = {
-        "English": "N/A\nThe image could not be processed. Please enter the name of the medicine and search again.",
-        "French": "N/A\nL'image n'a pas pu etre traitee. Veuillez saisir le nom du medicament et relancer la recherche.",
-        "German": "N/A\nDas Bild konnte nicht verarbeitet werden. Bitte geben Sie den Namen des Arzneimittels ein und suchen Sie erneut.",
-        "Italian": "N/A\nNon e stato possibile elaborare l'immagine. Inserisci il nome del medicinale e cerca di nuovo.",
-        "Romanian": "N/A\nImaginea nu a putut fi procesata. Introdu numele medicamentului si cauta din nou.",
-        "Spanish": "N/A\nNo se pudo procesar la imagen. Introduzca el nombre del medicamento y busque de nuevo.",
-    }
-    return messages[language]
 
 
 def match_not_found_html(language: str) -> str:
@@ -1210,14 +457,6 @@ def normalize_browser_device(browser_device: str) -> str:
 
 def default_orientation_for_device(browser_device: str) -> str:
     return ORIENTATION_NORMAL_FIRST
-
-
-def normalize_image_timeout_seconds(timeout_seconds) -> int:
-    try:
-        seconds = int(timeout_seconds)
-    except (TypeError, ValueError):
-        seconds = DEFAULT_IMAGE_IDENTIFICATION_SECONDS
-    return max(MIN_IMAGE_IDENTIFICATION_SECONDS, min(MAX_IMAGE_IDENTIFICATION_SECONDS, seconds))
 
 
 def apply_browser_language(browser_language: str, browser_device: str = DEVICE_DESKTOP_OR_LAPTOP):
@@ -1354,7 +593,7 @@ def read_label(
             if orientation_note:
                 ocr_parts.append(orientation_note)
             if vision_text:
-                ocr_parts.append(f"MiniCPM-V OCR:\n{vision_text}")
+                ocr_parts.append(f"MiniCPM-V 4.6:\n{vision_text}")
             if vision_match["score"] >= OCR_MATCH_MIN_SCORE:
                 match_text = vision_text
             elif vision_timed_out and not manual_label:
@@ -1393,7 +632,7 @@ def read_label(
             ocr_text = ocr_text or "\n\n".join(ocr_parts)
         except Exception:
             server_status = start_llama_server(MINICPM_V_MODEL_REF, vision_ocr_url)
-            server_status_output = f"MiniCPM-V OCR: {server_status}\nTiny Aya: {'reachable' if is_port_reachable(model_url) else 'not reachable'}"
+            server_status_output = f"MiniCPM-V 4.6: {server_status}\nTiny Aya: {'reachable' if is_port_reachable(model_url) else 'not reachable'}"
             try:
                 pil_image, tesseract_text, orientation_note = choose_readable_image_orientation(
                     pil_image,
@@ -1404,7 +643,7 @@ def read_label(
                 tesseract_text = ""
             if tesseract_text:
                 ocr_text = (
-                    "MiniCPM-V OCR server was not reached, so Tesseract OCR was used instead.\n\n"
+                    "MiniCPM-V 4.6 server was not reached, so Tesseract OCR was used instead.\n\n"
                     f"Background start attempt: {server_status}\n\n"
                     f"{orientation_note + chr(10) + chr(10) if orientation_note else ''}"
                     f"{tesseract_text}"
@@ -1412,7 +651,7 @@ def read_label(
                 can_match_ocr = False
             else:
                 message = (
-                    "MiniCPM-V OCR server was not reached, and Tesseract OCR is not installed "
+                    "MiniCPM-V 4.6 server was not reached, and Tesseract OCR is not installed "
                     "or is not on your PATH.\n\n"
                     f"Background start attempt: {server_status}"
                 )
@@ -1544,428 +783,7 @@ def read_label(
     return
 
 
-CUSTOM_CSS = """
-/* ── Force light palette (backstop if .dark class is applied) ───── */
-.dark {
-    --body-background-fill: #f0f4f5;
-    --background-fill-primary: #ffffff;
-    --background-fill-secondary: #ffffff;
-    --block-background-fill: #ffffff;
-    --border-color-primary: #e3e8eb;
-    --body-text-color: #212b32;
-    --body-text-color-subdued: #425563;
-    --color-accent-soft: #e8f4fe;
-    color-scheme: light;
-}
-html { color-scheme: light; }
-
-/* ── Base ─────────────────────────────────────────── */
-.gradio-container {
-    background: #f0f4f5 !important;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
-}
-* {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
-}
-
-/* Force all input and textarea elements to white background with dark text */
-textarea,
-input[type="text"],
-input[type="number"],
-input[type="search"],
-.block textarea,
-.wrap textarea {
-    background: #ffffff !important;
-    color: #212b32 !important;
-    border-color: #aeb7bd !important;
-}
-
-/* ── Brand header ─────────────────────────────────── */
-/* Zero the HTML wrapper padding so the blue card spans the full content
-   width, matching the accordion below it. */
-#brand-header-block {
-    padding: 0 !important;
-    border: none !important;
-    background: transparent !important;
-}
-#medilens-header {
-    background: #005eb8;
-    border-radius: 24px;
-    padding: 24px 28px 20px;
-    margin-bottom: 12px;
-    box-shadow: 0 1px 3px rgba(0, 94, 184, 0.30), 0 6px 16px rgba(0, 94, 184, 0.18);
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
-#medilens-header .brand-logo {
-    height: 60px;
-    width: auto;
-    flex: 0 0 auto;
-}
-#medilens-header h2 {
-    color: white !important;
-    font-size: 1.75rem !important;
-    font-weight: 700 !important;
-    margin: 0 0 4px 0 !important;
-    letter-spacing: -0.01em !important;
-}
-#medilens-header p {
-    color: #aed6f1 !important;
-    margin: 0 !important;
-    font-size: 0.9rem !important;
-    line-height: 1.5 !important;
-}
-
-/* ── Intro text (hide h1, style paragraph) ─────────── */
-#intro-text .prose h1,
-#intro-text h1 {
-    display: none !important;
-}
-#intro-text {
-    background: #e8f4fe !important;
-    border-left: 4px solid #005eb8 !important;
-    padding: 12px 16px !important;
-    border-radius: 0 16px 16px 0 !important;
-    box-shadow: none !important;
-    margin-bottom: 4px !important;
-}
-#intro-text p {
-    color: #212b32 !important;
-    font-size: 0.9rem !important;
-    margin: 0 !important;
-    line-height: 1.6 !important;
-}
-
-/* ── Top panels ───────────────────────────────────── */
-#top-left-panel,
-#top-right-panel {
-    background: white !important;
-    border-radius: 20px !important;
-    padding: 24px !important;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.06) !important;
-    border: 1px solid #e3e8eb !important;
-    min-height: 480px;
-}
-
-/* ── Image upload ─────────────────────────────────── */
-/* Fixed-height image box so nothing shifts between empty and uploaded states */
-#medicine-image {
-    height: 250px !important;
-    min-height: 250px !important;
-    max-height: 250px !important;
-    border-radius: 16px;
-    border: 2px dashed #aeb7bd !important;
-    background: #f0f4f5;
-    position: relative !important;
-    overflow: hidden !important;
-}
-/* Pin the upload/webcam buttons at a fixed spot near the top; never moves */
-#medicine-image .source-selection {
-    position: absolute !important;
-    top: 6px !important;
-    left: 8px !important;
-    right: 8px !important;
-    z-index: 5 !important;
-    background: #f0f4f5 !important;
-    border-radius: 12px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    height: 40px !important;
-    min-height: 40px !important;
-    max-height: 40px !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    overflow: visible !important;
-    border: none !important;
-    border-bottom: none !important;
-    box-shadow: none !important;
-}
-#medicine-image .source-selection button {
-    margin: 0 6px !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    border: none !important;
-}
-/* Reserve space at the top so the photo sits below the buttons (does not cover them) */
-#medicine-image .image-container {
-    height: 250px !important;
-    padding-top: 52px !important;
-    box-sizing: border-box !important;
-}
-#medicine-image .image-frame,
-#medicine-image .image-preview,
-#medicine-image img {
-    max-height: 185px !important;
-    object-fit: contain !important;
-}
-
-/* ── Match HTML card ──────────────────────────────── */
-#match-output {
-    background: #e8f4fe;
-    border: 1px solid #aed6f1;
-    border-radius: 16px;
-    padding: 10px 16px;
-    min-height: 69px;
-    margin: 0 -3px 4px -3px;
-    width: calc(100% + 6px);
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-.match-card .match-medicine-name {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: #212b32;
-    margin: 0 0 5px 0;
-    line-height: 1.25;
-}
-.match-na {
-    color: #768692;
-    font-style: italic;
-    margin: 0;
-    padding: 6px 0;
-    font-size: 0.9rem;
-}
-.confidence-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 10px;
-    border-radius: 9999px;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-}
-.confidence-high   { background: #d4edda; color: #155724; border: 1px solid #b8dfc4; }
-.confidence-medium { background: #fff3cd; color: #7a5000; border: 1px solid #ffe69c; }
-.confidence-low    { background: #f8d7da; color: #6b1a22; border: 1px solid #f1b0b7; }
-
-/* ── Explanation output (Medicine use) ────────────── */
-#explanation-output textarea {
-    background: #eafaf0 !important;
-    border-color: #b7e0c4 !important;
-    color: #212b32 !important;
-    border-left: 4px solid #007f3b !important;
-    border-radius: 0 14px 14px 0 !important;
-    font-size: 0.9rem !important;
-    margin: 0 -2px !important;
-    width: calc(100% + 4px) !important;
-    box-sizing: border-box !important;
-}
-/* Green label pill to match the Medicine use box */
-#explanation-output label span {
-    background: #d4eddb !important;
-    color: #00451f !important;
-    padding: 2px 10px !important;
-    border-radius: 9999px !important;
-}
-
-/* ── Warning output ───────────────────────────────── */
-#warning-output textarea {
-    background: #fff9e6 !important;
-    border-color: #ffb81c !important;
-    color: #4a3700 !important;
-    border-left: 4px solid #ffb81c !important;
-    border-radius: 0 14px 14px 0 !important;
-    font-size: 0.9rem !important;
-    margin: 0 -2px !important;
-    width: calc(100% + 4px) !important;
-    box-sizing: border-box !important;
-}
-/* Amber label pill to match the Safety warning box */
-#warning-output label span {
-    background: #fff3cd !important;
-    color: #4a3700 !important;
-    padding: 2px 10px !important;
-    border-radius: 9999px !important;
-}
-
-/* ── Source URL (HTML) ────────────────────────────── */
-/* Reserve fixed space so the right panel does not resize when the link appears */
-#source-url-output {
-    min-height: 64px;
-}
-.source-url-box {
-    background: #f0f4f5;
-    border: 1px solid #aeb7bd;
-    border-radius: 12px;
-    padding: 10px 14px;
-    font-size: 0.9rem;
-    color: #212b32;
-    margin: 0 -2px;
-    width: calc(100% + 4px);
-    box-sizing: border-box;
-}
-.source-url-label {
-    display: block;
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #768692;
-    margin-bottom: 4px;
-}
-.source-url-box a {
-    color: #005eb8;
-    text-decoration: underline;
-    font-weight: 600;
-    word-break: break-all;
-}
-.source-url-box a:hover { color: #003087; }
-
-/* ── OCR textbox (compact) ────────────────────────── */
-#ocr-output textarea {
-    height: 80px !important;
-    min-height: 80px !important;
-    max-height: 80px !important;
-    overflow-y: auto !important;
-    background: #ffffff !important;
-    color: #212b32 !important;
-}
-
-/* ── Read button (NHS green) ──────────────────────── */
-#read-btn button {
-    background: #007f3b !important;
-    border-radius: 9999px !important;
-    font-weight: 600 !important;
-    font-size: 1rem !important;
-    letter-spacing: 0.02em !important;
-    padding: 14px 24px !important;
-    border: none !important;
-    box-shadow: 0 1px 2px rgba(0, 64, 29, 0.30), 0 2px 6px rgba(0, 127, 59, 0.25) !important;
-    color: white !important;
-    width: 100% !important;
-    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease !important;
-}
-#read-btn button:hover {
-    background: #00662f !important;
-    box-shadow: 0 2px 4px rgba(0, 64, 29, 0.35), 0 6px 16px rgba(0, 127, 59, 0.30) !important;
-}
-#read-btn button:active {
-    transform: translateY(1px) !important;
-    box-shadow: 0 1px 2px rgba(0, 64, 29, 0.30) !important;
-}
-
-/* ── Language selector ────────────────────────────── */
-#language-selector {
-    border: 2px solid #aeb7bd !important;
-    border-radius: 12px !important;
-    background: white !important;
-}
-
-/* ── Manual label callout ─────────────────────────── */
-/* No default group chrome (avoids a stray grey bar under the field) */
-#manual-label-section {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-}
-/* Invisible flag: drives the field highlight via :has, shows no text/box */
-#manual-label-helper {
-    height: 0 !important;
-    min-height: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    border: none !important;
-    background: transparent !important;
-    overflow: hidden !important;
-}
-#manual-label-section:has(#manual-label-helper:not([style*="display: none"])) {
-    border: 2px solid #ffb81c !important;
-    border-radius: 12px !important;
-    padding: 8px !important;
-    background: #fff9e6 !important;
-}
-#manual-label-section:has(#manual-label-helper:not([style*="display: none"])) #manual-label-input textarea {
-    border-color: #ffb81c !important;
-    box-shadow: 0 0 0 2px rgba(255, 184, 28, 0.3) !important;
-}
-
-/* ── Model note text ──────────────────────────────── */
-#model-note {
-    background: #eef6fd !important;
-    border-left: 4px solid #aed6f1 !important;
-    padding: 12px 16px !important;
-    border-radius: 0 16px 16px 0 !important;
-    margin-top: 4px !important;
-}
-#model-note, #model-note p {
-    color: #425563 !important;
-    font-size: 0.85rem !important;
-    line-height: 1.6 !important;
-}
-
-/* ── Glossary note ────────────────────────────────── */
-#glossary-note {
-    border-left: 4px solid #005eb8;
-    padding: 8px 12px;
-    background: #e8f4fe;
-    border-radius: 0 14px 14px 0;
-    color: #212b32 !important;
-}
-#glossary-note p { color: #212b32 !important; }
-
-/* ── Progress ─────────────────────────────────────── */
-/* Fixed height so the left panel never grows when "Processing image..." appears */
-#processing-progress {
-    height: 20px !important;
-    min-height: 20px !important;
-    margin: 2px 0 0 0 !important;
-    overflow: hidden;
-}
-#read-action-section { gap: 2px !important; }
-#read-action-section > .form,
-#read-action-section .block {
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-}
-.single-progress-status {
-    font-size: 12px;
-    line-height: 18px;
-    color: #425563;
-}
-
-/* ── Technical panels ─────────────────────────────── */
-#technical-left-panel,
-#technical-right-panel {
-    min-height: 200px;
-}
-
-/* ── Phone optimization ───────────────────────────── */
-@media (max-width: 600px) {
-    #medilens-header {
-        border-radius: 16px;
-        padding: 16px 18px;
-        gap: 12px;
-    }
-    #medilens-header .brand-logo { height: 44px; }
-    #medilens-header h2 { font-size: 1.4rem !important; }
-    #medilens-header p { font-size: 0.8rem !important; }
-    #intro-text { padding: 10px 12px !important; }
-    #intro-text p { font-size: 0.85rem !important; }
-    #top-left-panel,
-    #top-right-panel {
-        padding: 16px !important;
-        min-height: 0 !important;
-        border-radius: 16px !important;
-    }
-    #medicine-image,
-    #medicine-image .image-container {
-        height: 210px !important;
-        min-height: 210px !important;
-        max-height: 210px !important;
-    }
-    #medicine-image .image-frame,
-    #medicine-image .image-preview,
-    #medicine-image img { max-height: 150px !important; }
-    #technical-left-panel,
-    #technical-right-panel { min-height: 0 !important; }
-    #model-note, #model-note p { font-size: 0.8rem !important; }
-}
-"""
+CUSTOM_CSS = Path(__file__).with_name("static").joinpath("medilens.css").read_text(encoding="utf-8")
 
 BRAND_HEADER_HTML = """
 <div id="medilens-header">
@@ -2106,7 +924,7 @@ with gr.Blocks(
             with gr.Column(scale=1, elem_id="technical-right-panel"):
                 use_vision_ocr_input = gr.Checkbox(
                     value=True,
-                    label="Use local MiniCPM-V OCR model with Tesseract (reads image)",
+                    label="Use local MiniCPM-V 4.6 model with Tesseract (reads image)",
                 )
                 use_ai_model_input = gr.Checkbox(
                     value=True,
@@ -2115,7 +933,7 @@ with gr.Blocks(
                 with gr.Accordion("Model server URLs (advanced)", open=False):
                     vision_ocr_url_input = gr.Textbox(
                         value=DEFAULT_VISION_OCR_URL,
-                        label="Local MiniCPM-V OCR server URL",
+                        label="Local MiniCPM-V 4.6 server URL",
                         placeholder="http://127.0.0.1:8081/v1/chat/completions",
                     )
                     model_url_input = gr.Textbox(

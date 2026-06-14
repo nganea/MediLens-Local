@@ -1,4 +1,4 @@
-# MediLens Local: Medicine Label Helper
+﻿# MediLens Local: Medicine Label Helper
 
 MediLens Local is a small local-first Gradio app that reads a medicine label image with OCR, fuzzy-matches the text against a local CSV medicine database, and shows a plain-language explanation of what the medicine is commonly used for.
 
@@ -16,10 +16,15 @@ This app was developed with the help of OpenAI Codex and Claude.
 - Handle unclear labels with a low-confidence message.
 - Template responses in English, French, German, Italian, Spanish, and Romanian.
 - Optional local multilingual explanation generation with the Tiny Aya Global GGUF model.
+- Reusable `medilens_core` package for desktop, API, or robot adapters.
+- Reachy Mini adapter scaffold for English-only spoken medicine identification.
 
 ## Files
 
-- `app.py` - Gradio application.
+- `app.py` - Gradio desktop application and UI event wiring.
+- `medilens_core/` - Reusable medicine database, matching, OCR, model-server, explanation, and robot pipeline code.
+- `static/medilens.css` - Gradio UI styling.
+- `robot/reachy_mini_app.py` - Reachy Mini adapter scaffold and image-file test entry point.
 - `medicines.csv` - Local 200-row starter medicine database.
 - `requirements.txt` - Python package dependencies.
 - `README.md` - Setup and usage notes.
@@ -120,6 +125,44 @@ Open this address in your browser:
 ```text
 http://127.0.0.1:7860
 ```
+
+## Reachy Mini Prototype
+
+The reusable medicine logic now lives in `medilens_core`, so Reachy Mini does not need to run the Gradio web UI. The recommended hackathon setup is:
+
+- Run MiniCPM-V 4.6 on the desktop or laptop at `http://127.0.0.1:8081/v1/chat/completions`, or expose that address on the same local network for Reachy.
+- Let Reachy Mini handle the cue phrase, camera capture, speech, and thinking head movement.
+- Call `medilens_core.pipeline.identify_medicine_from_image(...)` with a 90-second timeout.
+- Speak only the English result from the local medicine database.
+
+The scaffold is in:
+
+```bash
+robot/reachy_mini_app.py
+```
+
+You can test the robot flow with an image file before wiring the real Reachy SDK:
+
+```bash
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --timeout 90
+```
+
+Replace the methods on `ReachyMiniHooks` with the actual Reachy Mini SDK calls for:
+
+- `speak`
+- `capture_image`
+- `start_thinking_motion`
+- `stop_thinking_motion`
+
+The intended spoken flow is:
+
+1. User: "Hey Reachy Mini, what's this medicine for?"
+2. Reachy: "Okay, hold the medicine label in front of me."
+3. Reachy captures a photo.
+4. Reachy: "I have taken a picture. I am checking it now."
+5. Reachy moves its head while MiniCPM-V 4.6 and database matching run.
+6. If found: "It looks like Paracetamol. It is used for..."
+7. If not found: "I do not know what this medicine is. Try the MediLens app on your device."
 
 ### Use The Camera
 
@@ -278,7 +321,7 @@ If the local server is not running, the app falls back to the simple template ex
 
 Tiny Aya is a 3B parameter model family. The Hugging Face GGUF page lists `tiny-aya-global-q4_k_m.gguf` as about 2.14 GB, which is a practical first choice for a local app. A larger BF16 or F16 file may be higher quality but needs much more memory.
 
-## Optional Local MiniCPM-V OCR
+## Optional Local MiniCPM-V 4.6
 
 If Tesseract struggles with stylized medicine logos, you can run a local vision-language OCR server with MiniCPM-V 4.6 GGUF.
 
@@ -299,7 +342,7 @@ py app.py
 In the app, tick:
 
 ```text
-Use local MiniCPM-V OCR server
+Use local MiniCPM-V 4.6 server
 ```
 
 The app calls this local URL by default:
