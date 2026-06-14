@@ -56,6 +56,20 @@ This app was developed with the help of OpenAI Codex and Claude.
 
    After installing, close Git Bash and open it again so the `llama-server` command is available.
 
+   To use a GPU-enabled `llama-server`, set GPU layers before starting the app:
+
+   ```bash
+   export MEDILENS_LLAMA_GPU_LAYERS=99
+   ```
+
+   On PowerShell, use:
+
+   ```powershell
+   $env:MEDILENS_LLAMA_GPU_LAYERS="99"
+   ```
+
+   When this is set, MediLens starts `llama-server` with `-ngl 99`.
+
 4. Install Python dependencies:
 
    ```bash
@@ -81,6 +95,12 @@ Open Git Bash and run:
 llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080
 ```
 
+For GPU mode, add `-ngl 99`:
+
+```bash
+llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080 -ngl 99
+```
+
 Wait until you see something like:
 
 ```text
@@ -95,6 +115,12 @@ Open a second Git Bash window and run:
 
 ```bash
 llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
+```
+
+For GPU mode, add `-ngl 99`:
+
+```bash
+llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081 -ngl 99
 ```
 
 Wait until you see something like:
@@ -417,7 +443,15 @@ http://127.0.0.1:8081/v1/chat/completions
 
 You can keep Tiny Aya on port `8080` for explanation and MiniCPM-V on port `8081` for OCR.
 
-If a local model server is not running, the app can try to start `llama-server` in the background. Use the **Start/check local model servers** button in the app, or let the app attempt a background start after a connection failure. The first start can take a minute or more while the model loads. If the app says it cannot find `llama-server`, restart your terminal after installing `llama.cpp` or start the server manually.
+If a local model server is not running, the app can try to start `llama-server` in the background. Use the **Check/retry local model servers** button in the app, or let the app attempt a background start after a connection failure. The first start can take a minute or more while the model loads. If the app says it cannot find `llama-server`, restart your terminal after installing `llama.cpp` or start the server manually.
+
+To start background model servers with GPU layers, set this before launching the app:
+
+```bash
+export MEDILENS_LLAMA_GPU_LAYERS=99
+```
+
+The app will add `-ngl 99` to each `llama-server` command. Leave the variable unset, or set it to `0`, for CPU mode.
 
 If the MiniCPM-V server is not running and cannot be started, the app shows Tesseract OCR text for debugging but does not trust it for medicine matching.
 

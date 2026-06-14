@@ -270,9 +270,9 @@ input[type="search"],
 
 /* â”€â”€ OCR textbox (compact) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #ocr-output textarea {
-    height: 132px !important;
-    min-height: 132px !important;
-    max-height: 132px !important;
+    height: 200px !important;
+    min-height: 200px !important;
+    max-height: 200px !important;
     overflow-y: auto !important;
     background: #ffffff !important;
     color: #212b32 !important;
@@ -391,6 +391,10 @@ input[type="search"],
 #server-status-output textarea {
     min-height: 58px !important;
     height: 58px !important;
+}
+#reachy-status-output textarea {
+    min-height: 112px !important;
+    height: 112px !important;
 }
 #use-vision-ocr-checkbox {
     margin-bottom: -8px !important;

@@ -9,6 +9,16 @@ from urllib.parse import urlparse
 from .config import DEFAULT_MODEL_URL, DEFAULT_VISION_OCR_URL, MINICPM_V_MODEL_REF, TINY_AYA_MODEL_REF
 
 
+def llama_gpu_layers() -> int:
+    value = os.getenv("MEDILENS_LLAMA_GPU_LAYERS", "").strip()
+    if not value:
+        return 0
+    try:
+        return max(0, int(value))
+    except ValueError:
+        return 0
+
+
 def normalize_local_url(url: str, default_url: str) -> str:
     cleaned_url = (url or "").strip() or default_url
     if "://" not in cleaned_url:
@@ -111,6 +121,9 @@ def start_llama_server(model_ref: str, url: str) -> str:
 
     _, port = parse_host_port(url)
     command = [llama_server, "-hf", model_ref, "--port", str(port)]
+    gpu_layers = llama_gpu_layers()
+    if gpu_layers > 0:
+        command.extend(["-ngl", str(gpu_layers)])
     kwargs = {
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
@@ -124,7 +137,8 @@ def start_llama_server(model_ref: str, url: str) -> str:
     except OSError as error:
         return f"Could not start llama-server: {error}"
 
-    return f"Starting in the background on port {port}. Wait a minute for the model to load, then try again."
+    gpu_note = f" with -ngl {gpu_layers}" if gpu_layers > 0 else ""
+    return f"Starting in the background on port {port}{gpu_note}. Wait a minute for the model to load, then try again."
 
 
 def start_local_model_servers(vision_ocr_url: str, model_url: str) -> str:
@@ -141,4 +155,3 @@ def check_local_model_servers(vision_ocr_url: str, model_url: str) -> str:
     minicpm_status = "reachable" if is_port_reachable(vision_ocr_url) else "not reachable"
     tiny_aya_status = "reachable" if is_port_reachable(model_url) else "not reachable"
     return f"MiniCPM-V 4.6: {minicpm_status}\nTiny Aya: {tiny_aya_status}"
-

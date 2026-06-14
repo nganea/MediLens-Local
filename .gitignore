@@ -10,5 +10,6 @@ local_models/
 *.gguf
 *.onnx
 robot/voices/
+robot/logs/
 .gradio/
 .claude/

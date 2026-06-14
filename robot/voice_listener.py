@@ -162,12 +162,17 @@ class VoiceListener:
         ]
         return " ".join(kept).strip()
 
-    def listen(self, on_ready=None):
+    def listen(self, on_ready=None, should_stop=None, on_speech_start=None, on_transcribing=None):
         """Yield transcribed text for each spoken utterance, forever.
 
         on_ready: optional callback invoked once, after the microphone has been
         calibrated, to signal that the system is ready to be spoken to. The
         caller must stay quiet until on_ready fires (calibration needs silence).
+        should_stop: optional callback checked between audio frames.
+        on_speech_start: optional callback invoked when speech crosses the
+        voice-activity threshold.
+        on_transcribing: optional callback invoked when an utterance is ready
+        for speech-to-text.
         """
         import contextlib
 
@@ -214,6 +219,9 @@ class VoiceListener:
             idle_frames = 0
 
             for frame in frames:
+                if should_stop is not None and should_stop():
+                    return
+
                 level = _rms(frame)
                 if not collecting:
                     preroll.append(frame)
@@ -232,6 +240,8 @@ class VoiceListener:
                         collecting = True
                         collected = list(preroll)
                         silence_run = 0
+                        if on_speech_start is not None:
+                            on_speech_start()
                         if self.debug:
                             print(f"[listener] speech started (level={level:.4f})", file=sys.stderr)
                     continue
@@ -253,6 +263,8 @@ class VoiceListener:
                         )
                     if speech_frames >= self.min_speech_frames:
                         utterance = np.concatenate(collected)
+                        if on_transcribing is not None:
+                            on_transcribing()
                         text = self.transcribe(utterance)
                         if text:
                             yield text

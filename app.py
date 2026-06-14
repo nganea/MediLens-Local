@@ -1,6 +1,10 @@
 ﻿from pathlib import Path
 import concurrent.futures
+import html
+import json
 import os
+import subprocess
+import sys
 import threading
 import time
 
@@ -44,6 +48,21 @@ from medilens_core.ocr import choose_readable_image_orientation, readable_image_
 APP_SERVER_NAME = os.getenv("MEDILENS_SERVER_NAME")
 APP_SERVER_PORT = int(os.getenv("MEDILENS_SERVER_PORT", "7860"))
 APP_SHARE = os.getenv("MEDILENS_SHARE", "").strip().lower() in {"1", "true", "yes", "on"}
+PROJECT_ROOT = Path(__file__).resolve().parent
+REACHY_SERVICE_HOST = os.getenv("MEDILENS_REACHY_SERVICE_HOST", "0.0.0.0")
+REACHY_SERVICE_PORT = int(os.getenv("MEDILENS_REACHY_SERVICE_PORT", "8765"))
+REACHY_SERVICE_URL = os.getenv("MEDILENS_REACHY_SERVICE_URL", f"http://127.0.0.1:{REACHY_SERVICE_PORT}")
+REACHY_HOST = os.getenv("MEDILENS_REACHY_HOST", "reachy-mini.local")
+REACHY_PORT = int(os.getenv("MEDILENS_REACHY_PORT", "8000"))
+REACHY_MIC = os.getenv("MEDILENS_REACHY_MIC", "reachy")
+REACHY_LOG_DIR = PROJECT_ROOT / "robot" / "logs"
+REACHY_STATUS_FILE = REACHY_LOG_DIR / "reachy_status.txt"
+REACHY_RESULT_FILE = REACHY_LOG_DIR / "reachy_result.json"
+REACHY_STOP_FILE = REACHY_LOG_DIR / "reachy_stop_requested.txt"
+MODEL_START_WAIT_SECONDS = int(os.getenv("MEDILENS_MODEL_START_WAIT_SECONDS", "75"))
+REACHY_PROCESS_LOCK = threading.Lock()
+REACHY_SERVICE_PROCESS = None
+REACHY_APP_PROCESS = None
 RESPONSE_VERSION = 0
 RESPONSE_VERSION_LOCK = threading.Lock()
 
@@ -345,6 +364,59 @@ def source_url_html(url: str) -> str:
     )
 
 
+def reachy_result_match_html(result: dict) -> str:
+    if not result.get("found"):
+        return MATCH_NA_HTML
+
+    medicine_name = html.escape(str(result.get("medicine_name") or "Medicine found"))
+    confidence = html.escape(str(result.get("confidence") or "low"))
+    score = html.escape(str(result.get("score") or "0"))
+    badge_class = f"confidence-{confidence}"
+    return (
+        f'<div class="match-card">'
+        f'<p class="match-medicine-name">{medicine_name}</p>'
+        f'<span class="confidence-badge {badge_class}">{confidence.capitalize()} confidence &middot; {score}/100</span>'
+        f"</div>"
+    )
+
+
+def reachy_result_updates():
+    try:
+        result_payload = json.loads(REACHY_RESULT_FILE.read_text(encoding="utf-8"))
+        result = result_payload.get("result") or {}
+    except (OSError, json.JSONDecodeError):
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+        )
+
+    ocr_text = (result.get("ocr_text") or "").strip()
+    if not ocr_text:
+        ocr_text = "Reachy Mini has not returned MiniCPM OCR text yet."
+
+    if result.get("found"):
+        match_text = result.get("matched_name") or result.get("medicine_name") or result.get("generic_name") or ""
+        explanation = result.get("common_uses") or ""
+        warning = result.get("safety_warning") or ""
+    else:
+        match_text = ""
+        explanation = result.get("message") or "N/A"
+        warning = "N/A"
+
+    return (
+        gr.update(value=ocr_text),
+        gr.update(value=reachy_result_match_html(result)),
+        gr.update(value=explanation),
+        gr.update(value=warning),
+        gr.update(value=source_url_html(result.get("source_url") or "")),
+        match_text,
+    )
+
+
 def likely_match_text(match: dict) -> str:
     row = match["row"]
     if row is None:
@@ -433,6 +505,73 @@ def enable_read_button():
     return gr.update(interactive=True)
 
 
+def enable_read_button_and_clear_progress():
+    return gr.update(interactive=True), hide_progress_bar()
+
+
+def begin_model_start_for_image(image, vision_ocr_url: str, model_url: str):
+    if image is None:
+        return gr.update(interactive=True), gr.update(), hide_progress_bar()
+    if is_port_reachable(vision_ocr_url) and is_port_reachable(model_url):
+        return gr.update(interactive=True), check_local_model_servers(vision_ocr_url, model_url), hide_progress_bar()
+    return (
+        gr.update(interactive=False),
+        "Starting/checking local AI models...",
+        gr.update(value='<div class="single-progress-status">Loading AI models...</div>', visible=True),
+    )
+
+
+def begin_model_start_for_manual_text(text, vision_ocr_url: str, model_url: str):
+    if not (text or "").strip():
+        return gr.update(interactive=True), gr.update(), hide_progress_bar()
+    if is_port_reachable(vision_ocr_url) and is_port_reachable(model_url):
+        return gr.update(interactive=True), check_local_model_servers(vision_ocr_url, model_url), hide_progress_bar()
+    return (
+        gr.update(interactive=False),
+        "Starting/checking local AI models...",
+        gr.update(value='<div class="single-progress-status">Loading AI models...</div>', visible=True),
+    )
+
+
+def _wait_for_model_servers_if_starting(status: str, vision_ocr_url: str, model_url: str) -> str:
+    hard_failure_markers = (
+        "Could not find llama-server",
+        "Model not downloaded",
+        "Could not start llama-server",
+    )
+    if any(marker in status for marker in hard_failure_markers):
+        return status
+    if "Starting in the background" not in status:
+        return status
+
+    vision_ocr_url = normalize_local_url(vision_ocr_url, DEFAULT_VISION_OCR_URL)
+    model_url = normalize_local_url(model_url, DEFAULT_MODEL_URL)
+    deadline = time.monotonic() + max(0, MODEL_START_WAIT_SECONDS)
+    while time.monotonic() < deadline:
+        if is_port_reachable(vision_ocr_url) and is_port_reachable(model_url):
+            return f"{status}\n\nReady: both local AI model servers are reachable."
+        time.sleep(2)
+
+    return (
+        f"{status}\n\nStill loading: the local AI model servers are not reachable yet. "
+        "Wait a little longer, then press Search again or use Check/retry local model servers."
+    )
+
+
+def start_local_model_servers_for_image(image, vision_ocr_url: str, model_url: str):
+    if image is None:
+        return gr.update()
+    status = start_local_model_servers(vision_ocr_url, model_url)
+    return _wait_for_model_servers_if_starting(status, vision_ocr_url, model_url)
+
+
+def start_local_model_servers_for_manual_text(text, vision_ocr_url: str, model_url: str):
+    if not (text or "").strip():
+        return gr.update()
+    status = start_local_model_servers(vision_ocr_url, model_url)
+    return _wait_for_model_servers_if_starting(status, vision_ocr_url, model_url)
+
+
 def update_ui_language(language: str):
     labels = UI_LABELS[language]
     return (
@@ -489,6 +628,284 @@ def apply_browser_language(browser_language: str, browser_device: str = DEVICE_D
         gr.update(value=device),
         gr.update(value=default_orientation_for_device(device)),
     )
+
+
+def _process_is_running(process) -> bool:
+    return process is not None and process.poll() is None
+
+
+def _background_process(command: list[str], log_name=None):
+    kwargs = {
+        "cwd": str(PROJECT_ROOT),
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "stdin": subprocess.DEVNULL,
+    }
+    if log_name:
+        REACHY_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log_path = REACHY_LOG_DIR / log_name
+        log_file = log_path.open("a", encoding="utf-8")
+        kwargs["stdout"] = log_file
+        kwargs["stderr"] = subprocess.STDOUT
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+    return subprocess.Popen(command, **kwargs)
+
+
+def _stop_background_process(process, name: str) -> str:
+    if not _process_is_running(process):
+        return f"{name}: already stopped."
+    try:
+        process.terminate()
+        process.wait(timeout=8)
+        return f"{name}: stopped."
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+        return f"{name}: forced to stop."
+    except OSError as error:
+        return f"{name}: could not stop ({error})."
+
+
+def reachy_runtime_status() -> tuple:
+    with REACHY_PROCESS_LOCK:
+        running = _process_is_running(REACHY_APP_PROCESS)
+    if running:
+        status = (
+            "MediLens on Reachy Mini is running.\n"
+            f"Robot target: {REACHY_HOST}:{REACHY_PORT}\n"
+            'Say "Reachy stop", or press Stop Reachy Mini MediLens.'
+        )
+        return gr.update(value="Stop Reachy Mini MediLens", variant="stop"), status
+    status = (
+        "Reachy Mini is not connected yet.\n"
+        f"{reachy_start_reminder()}"
+    )
+    return gr.update(value="Start Reachy Mini MediLens", variant="secondary"), status
+
+
+def reachy_start_reminder(prefix: str = "Before starting") -> str:
+    return (
+        f"{prefix}, turn on Reachy Mini at {REACHY_HOST}:{REACHY_PORT} "
+        "and make sure all robot applications are off. "
+        "If Windows Firewall asks for permission, allow the connection so the laptop can communicate with Reachy Mini."
+    )
+
+
+def begin_reachy_toggle(reachy_is_running: bool) -> tuple:
+    if reachy_is_running:
+        return (
+            gr.update(value="Stopping Reachy Mini MediLens...", interactive=False),
+            "Stopping Reachy Mini MediLens...",
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+        )
+    return (
+        gr.update(value="Starting Reachy Mini MediLens...", interactive=False),
+        (
+            "Starting Reachy Mini MediLens...\n"
+            f"{reachy_start_reminder()}\n\n"
+            f"This can take a moment while the local service, robot connection, {REACHY_MIC} microphone, "
+            "and voice models initialize."
+        ),
+        None,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+    )
+
+
+def enable_reachy_button():
+    return gr.update(interactive=True)
+
+
+def start_reachy_mini_medilens(vision_ocr_url: str, model_url: str) -> tuple:
+    global REACHY_SERVICE_PROCESS, REACHY_APP_PROCESS
+    with REACHY_PROCESS_LOCK:
+        if _process_is_running(REACHY_APP_PROCESS):
+            status = (
+                "MediLens on Reachy Mini is already running.\n"
+                f"Robot target: {REACHY_HOST}:{REACHY_PORT}\n"
+                'Say "Reachy stop", or press Stop Reachy Mini MediLens.'
+            )
+            return gr.update(value="Stop Reachy Mini MediLens", variant="stop"), status, True
+
+        try:
+            REACHY_LOG_DIR.mkdir(parents=True, exist_ok=True)
+            REACHY_STATUS_FILE.write_text("Starting Reachy Mini MediLens...", encoding="utf-8")
+            REACHY_STOP_FILE.unlink(missing_ok=True)
+            REACHY_RESULT_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        model_status = start_local_model_servers(vision_ocr_url, model_url)
+        messages = [
+            reachy_start_reminder(),
+            f"Logs: {REACHY_LOG_DIR / 'medilens_robot_service.log'} and {REACHY_LOG_DIR / 'reachy_mini_app.log'}",
+            model_status,
+        ]
+
+        if is_port_reachable(REACHY_SERVICE_URL):
+            messages.append(f"MediLens robot service: already reachable at {REACHY_SERVICE_URL}.")
+        else:
+            service_command = [
+                sys.executable,
+                str(PROJECT_ROOT / "robot" / "medilens_robot_service.py"),
+                "--host",
+                REACHY_SERVICE_HOST,
+                "--port",
+                str(REACHY_SERVICE_PORT),
+            ]
+            try:
+                REACHY_SERVICE_PROCESS = _background_process(service_command, "medilens_robot_service.log")
+                messages.append(f"MediLens robot service: starting at {REACHY_SERVICE_URL}.")
+            except OSError as error:
+                messages.append(f"MediLens robot service: could not start ({error}).")
+                return gr.update(value="Start Reachy Mini MediLens", variant="secondary"), "\n\n".join(messages), False
+
+        reachy_command = [
+            sys.executable,
+            str(PROJECT_ROOT / "robot" / "reachy_mini_app.py"),
+            "--use-reachy",
+            "--listen",
+            "--language",
+            "auto",
+            "--orientation-mode",
+            ORIENTATION_NORMAL_FIRST,
+            "--max-vision-attempts",
+            "1",
+            "--service-url",
+            REACHY_SERVICE_URL,
+            "--reachy-host",
+            REACHY_HOST,
+            "--reachy-port",
+            str(REACHY_PORT),
+            "--timeout",
+            "90",
+            "--mic",
+            REACHY_MIC,
+            "--show-result",
+            "--status-file",
+            str(REACHY_STATUS_FILE),
+            "--result-file",
+            str(REACHY_RESULT_FILE),
+            "--stop-file",
+            str(REACHY_STOP_FILE),
+        ]
+        try:
+            REACHY_APP_PROCESS = _background_process(reachy_command, "reachy_mini_app.log")
+            time.sleep(1)
+            if not _process_is_running(REACHY_APP_PROCESS):
+                exit_code = REACHY_APP_PROCESS.poll()
+                REACHY_APP_PROCESS = None
+                messages.append(
+                    "Reachy Mini app stopped immediately. Check that Reachy Mini is turned on, "
+                    f"reachable at {REACHY_HOST}:{REACHY_PORT}, and has all other applications off. "
+                    f"Exit code: {exit_code}."
+                )
+                return gr.update(value="Start Reachy Mini MediLens", variant="secondary"), "\n\n".join(messages), False
+            messages.append("Reachy Mini app: starting hands-free listening mode.")
+            messages.append(f"Microphone: {REACHY_MIC}.")
+            messages.append('When Reachy says "I am listening", ask about a medicine label.')
+            return gr.update(value="Stop Reachy Mini MediLens", variant="stop"), "\n\n".join(messages), True
+        except OSError as error:
+            messages.append(f"Reachy Mini app: could not start ({error}).")
+            return gr.update(value="Start Reachy Mini MediLens", variant="secondary"), "\n\n".join(messages), False
+
+
+def stop_reachy_mini_medilens() -> tuple:
+    global REACHY_SERVICE_PROCESS, REACHY_APP_PROCESS
+    with REACHY_PROCESS_LOCK:
+        if _process_is_running(REACHY_APP_PROCESS):
+            try:
+                REACHY_LOG_DIR.mkdir(parents=True, exist_ok=True)
+                REACHY_STATUS_FILE.write_text(
+                    "Stop requested from the desktop app. Waiting for Reachy Mini to say goodbye...",
+                    encoding="utf-8",
+                )
+                REACHY_STOP_FILE.write_text("stop", encoding="utf-8")
+            except OSError:
+                pass
+
+            try:
+                REACHY_APP_PROCESS.wait(timeout=12)
+                app_status = "Reachy Mini app: stopped after saying goodbye."
+            except subprocess.TimeoutExpired:
+                app_status = _stop_background_process(REACHY_APP_PROCESS, "Reachy Mini app")
+                app_status = f"{app_status} Graceful stop timed out."
+        else:
+            app_status = _stop_background_process(REACHY_APP_PROCESS, "Reachy Mini app")
+
+        service_status = _stop_background_process(REACHY_SERVICE_PROCESS, "MediLens robot service")
+        REACHY_APP_PROCESS = None
+        REACHY_SERVICE_PROCESS = None
+    status = (
+        f"{app_status}\n{service_status}\n\n"
+        f"{reachy_start_reminder('Before starting again')}"
+    )
+    try:
+        REACHY_STATUS_FILE.write_text("Reachy Mini MediLens stopped.", encoding="utf-8")
+        REACHY_STOP_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return gr.update(value="Start Reachy Mini MediLens", variant="secondary"), status, False
+
+
+def toggle_reachy_mini_medilens(reachy_is_running: bool, vision_ocr_url: str, model_url: str) -> tuple:
+    if reachy_is_running:
+        return stop_reachy_mini_medilens()
+    return start_reachy_mini_medilens(vision_ocr_url, model_url)
+
+
+def refresh_reachy_status(reachy_is_running: bool, current_status: str) -> tuple:
+    if not reachy_is_running:
+        return gr.update(), gr.update(), False, gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+
+    with REACHY_PROCESS_LOCK:
+        running = _process_is_running(REACHY_APP_PROCESS)
+    if not running:
+        status = (
+            "Reachy Mini MediLens is not running.\n"
+            f"{reachy_start_reminder('Before starting again')}"
+        )
+        return (
+            gr.update(value=status),
+            gr.update(value="Start Reachy Mini MediLens", variant="secondary"),
+            False,
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+        )
+
+    try:
+        latest_status = REACHY_STATUS_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        latest_status = ""
+
+    result_updates = reachy_result_updates()
+
+    if not latest_status or latest_status == (current_status or "").strip():
+        return gr.update(), gr.update(), reachy_is_running, *result_updates
+
+    status = (
+        "Reachy Mini MediLens is running.\n"
+        f"{latest_status}\n\n"
+        'Say "Reachy stop", or press Stop Reachy Mini MediLens.'
+    )
+    return gr.update(value=status), gr.update(), reachy_is_running, *result_updates
 
 
 def update_language_and_refresh_result(
@@ -906,6 +1323,7 @@ with gr.Blocks(
     browser_device_input = gr.Textbox(value=DEVICE_DESKTOP_OR_LAPTOP, visible=False)
     image_source_input = gr.Textbox(value="", visible=False)
     match_text_state = gr.State("")
+    reachy_running_state = gr.State(False)
 
     with gr.Row(equal_height=True):
         with gr.Column(scale=1, elem_id="top-left-panel"):
@@ -1009,10 +1427,10 @@ with gr.Blocks(
                     elem_id="server-status-output",
                 )
                 start_servers_button = gr.Button(
-                    "Start/check local model servers",
+                    "Check/retry local model servers",
                     elem_id="start-servers-btn",
                 )
-                with gr.Accordion("Model server URLs (advanced)", open=True, elem_id="model-server-urls"):
+                with gr.Accordion("Model server URLs (advanced)", open=False, elem_id="model-server-urls"):
                     vision_ocr_url_input = gr.Textbox(
                         value=DEFAULT_VISION_OCR_URL,
                         label="Local MiniCPM-V 4.6 server URL",
@@ -1023,6 +1441,16 @@ with gr.Blocks(
                         label="Local Tiny Aya server URL",
                         placeholder="http://127.0.0.1:8080/v1/chat/completions",
                     )
+                reachy_status_output = gr.Textbox(
+                    label="Reachy Mini MediLens status",
+                    value=reachy_start_reminder(),
+                    lines=6,
+                    elem_id="reachy-status-output",
+                )
+                reachy_button = gr.Button(
+                    "Start Reachy Mini MediLens",
+                    elem_id="reachy-mini-btn",
+                )
 
     demo.load(
         fn=apply_browser_language,
@@ -1083,9 +1511,17 @@ with gr.Blocks(
             orientation_mode_input,
         ],
     ).then(
-        fn=check_local_model_servers,
-        inputs=[vision_ocr_url_input, model_url_input],
+        fn=begin_model_start_for_image,
+        inputs=[image_input, vision_ocr_url_input, model_url_input],
+        outputs=[read_button, server_status_output, processing_progress],
+    ).then(
+        fn=start_local_model_servers_for_image,
+        inputs=[image_input, vision_ocr_url_input, model_url_input],
         outputs=[server_status_output],
+    ).then(
+        fn=enable_read_button_and_clear_progress,
+        inputs=[],
+        outputs=[read_button, processing_progress],
     )
 
     image_input.upload(
@@ -1140,6 +1576,18 @@ with gr.Blocks(
             warning_output,
             source_url_output,
         ],
+    ).then(
+        fn=begin_model_start_for_manual_text,
+        inputs=[manual_label_input, vision_ocr_url_input, model_url_input],
+        outputs=[read_button, server_status_output, processing_progress],
+    ).then(
+        fn=start_local_model_servers_for_manual_text,
+        inputs=[manual_label_input, vision_ocr_url_input, model_url_input],
+        outputs=[server_status_output],
+    ).then(
+        fn=enable_read_button_and_clear_progress,
+        inputs=[],
+        outputs=[read_button, processing_progress],
     )
 
     start_servers_button.click(
@@ -1147,6 +1595,52 @@ with gr.Blocks(
         inputs=[vision_ocr_url_input, model_url_input],
         outputs=[server_status_output],
     )
+
+    reachy_event = reachy_button.click(
+        fn=begin_reachy_toggle,
+        inputs=[reachy_running_state],
+        outputs=[
+            reachy_button,
+            reachy_status_output,
+            image_input,
+            manual_label_input,
+            match_output,
+            explanation_output,
+            warning_output,
+            source_url_output,
+            ocr_output,
+            match_text_state,
+        ],
+    )
+
+    reachy_event.then(
+        fn=toggle_reachy_mini_medilens,
+        inputs=[reachy_running_state, vision_ocr_url_input, model_url_input],
+        outputs=[reachy_button, reachy_status_output, reachy_running_state],
+    ).then(
+        fn=enable_reachy_button,
+        inputs=[],
+        outputs=[reachy_button],
+    )
+
+    if hasattr(gr, "Timer"):
+        reachy_status_timer = gr.Timer(3.0)
+        reachy_status_timer.tick(
+            fn=refresh_reachy_status,
+            inputs=[reachy_running_state, reachy_status_output],
+            outputs=[
+                reachy_status_output,
+                reachy_button,
+                reachy_running_state,
+                ocr_output,
+                match_output,
+                explanation_output,
+                warning_output,
+                source_url_output,
+                match_text_state,
+            ],
+            queue=False,
+        )
 
     submit_glossary_button.click(
         fn=submit_glossary_suggestion,

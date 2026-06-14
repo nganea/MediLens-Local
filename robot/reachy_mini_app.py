@@ -8,6 +8,7 @@ your hackathon environment.
 """
 
 from pathlib import Path
+from dataclasses import asdict
 from io import BytesIO
 import base64
 import json
@@ -235,10 +236,10 @@ ROBOT_PHRASES = {
     "English": {
         "start": "Okay, hold the medicine label in front of me.",
         "picture": "I have taken a picture. I am checking it now.",
-        "listening": "I am listening. When you are ready, ask me what a medicine is.",
+        "listening": "I am listening. When you are ready ask me about a medicine.",
         "okay": "Okay.",
         "ready_again": "Ask me about another medicine whenever you are ready.",
-        "goodbye": "Okay, I will stop now. Goodbye.",
+        "goodbye": "Okay, I'll stop now. Goodbye.",
         "trouble": "Sorry, I could not read the medicine. Please try again.",
     },
     "Romanian": {
@@ -467,6 +468,7 @@ def identify_once(
     max_vision_attempts_per_orientation: int = 2,
     show_result: bool = False,
     language: str = "English",
+    result_file: str | None = None,
 ) -> None:
     hooks.speak(phrase("start", language), language=language)
     image = hooks.capture_image()
@@ -484,6 +486,7 @@ def identify_once(
 
     motion_thread = threading.Thread(target=thinking_loop, daemon=True)
     motion_thread.start()
+    result_payload = None
     try:
         if medilens_client is None:
             result = identify_medicine_from_image(
@@ -494,14 +497,22 @@ def identify_once(
                 max_vision_attempts_per_orientation=max_vision_attempts_per_orientation,
             )
             response_text = medicine_response(result)
+            result_payload = {"ok": True, "spoken_response": response_text, "result": asdict(result)}
         else:
             data = medilens_client.identify_payload(image, timeout_seconds=timeout_seconds)
             response_text = data.get("spoken_response") or "I do not know what this medicine is. Try the MediLens app on your device."
+            result_payload = data
             if show_result:
                 print(json.dumps(data, indent=2))
     finally:
         stop_motion.set()
         motion_thread.join(timeout=3)
+
+    if result_file and result_payload is not None:
+        try:
+            Path(result_file).write_text(json.dumps(result_payload, indent=2), encoding="utf-8")
+        except OSError as error:
+            print(f"(could not write result file: {error})")
 
     hooks.speak(translate_text(response_text, language), language=language)
 
@@ -514,13 +525,27 @@ def run_listen_loop(
     input_device=None,
     language: str = "en",
     mic: str = "laptop",
+    status_file: str | None = None,
+    stop_file: str | None = None,
 ) -> None:
     """Listen on the laptop or Reachy microphone and run identify on the cue."""
     from voice_listener import VoiceListener
 
+    def write_status(message: str) -> None:
+        if not status_file:
+            return
+        try:
+            Path(status_file).write_text(message, encoding="utf-8")
+        except OSError:
+            pass
+
+    def stop_requested() -> bool:
+        return bool(stop_file) and Path(stop_file).exists()
+
     reachy_media = getattr(hooks, "mini", None)
     reachy_media = reachy_media.media if (mic == "reachy" and reachy_media is not None) else None
 
+    write_status(f"Loading speech recognition (language={language}, mic={mic})...")
     print(f"Loading speech recognition (language={language}, mic={mic})...")
     listener = VoiceListener(
         model_size=model_size,
@@ -537,22 +562,37 @@ def run_listen_loop(
             "\nReady. Ask: \"Reachy, what is this medicine?\"  "
             "Say \"Reachy, stop\" to finish.\n"
         )
+        write_status(
+            "Reachy Mini is listening.\n"
+            'Try: "Reachy, what is this medicine?"\n'
+            'Say "Reachy stop" to finish.'
+        )
 
     print("Loading and calibrating... please wait for Reachy to say it is listening.")
-    for text in listener.listen(on_ready=announce_ready):
+    write_status("Loading and calibrating microphone. Please wait for Reachy to say it is listening.")
+    for text in listener.listen(
+        on_ready=announce_ready,
+        should_stop=stop_requested,
+        on_speech_start=lambda: write_status("Reachy Mini hears speech. Keep speaking..."),
+        on_transcribing=lambda: write_status("Reachy Mini heard you. Transcribing..."),
+    ):
         spoken_language = listener.last_language
         print(f"Heard [{spoken_language}]: {text!r}")
+        write_status(f"Reachy heard [{spoken_language}]: {text}")
 
         if command_matches_stop(text):
             listener.muted = True
+            write_status(f"Reachy heard stop command [{spoken_language}]: {text}\nStopping...")
             hooks.speak(phrase("goodbye", spoken_language), language=spoken_language)
             hooks.stop_gesture()  # antennas lower as a goodbye
             print("Stop command heard. Goodbye.")
+            write_status("Reachy Mini MediLens stopped after hearing the stop command.")
             break
 
         if command_matches_cue(text):
             listener.muted = True  # ignore Reachy's own voice while it answers
             try:
+                write_status(f"Reachy heard [{spoken_language}]: {text}\nChecking the medicine label...")
                 hooks.speak(phrase("okay", spoken_language), language=spoken_language)
                 identify_once(hooks, language=spoken_language, **identify_kwargs)
                 hooks.speak(phrase("ready_again", spoken_language), language=spoken_language)
@@ -560,12 +600,30 @@ def run_listen_loop(
                 # A slow model, timeout, or service hiccup must not end the
                 # session. Apologise and keep listening for the next question.
                 print(f"(identify failed: {error})")
+                write_status(f"Reachy heard [{spoken_language}]: {text}\nIdentification failed: {error}")
                 hooks.speak(phrase("trouble", spoken_language), language=spoken_language)
             finally:
                 hooks.ready_gesture()  # waggle again: ready for the next question
                 listener.flush()
                 listener.muted = False
                 print("Listening again... (say \"Reachy, stop\" to finish)")
+                write_status(
+                    "Reachy Mini is listening again.\n"
+                    f"Last heard [{spoken_language}]: {text}"
+                )
+        else:
+            write_status(
+                f"Reachy heard [{spoken_language}]: {text}\n"
+                'No medicine cue detected yet. Try saying "Reachy, what is this medicine?"'
+            )
+
+    if stop_requested():
+        spoken_language = listener.last_language or "English"
+        write_status("Stop requested from the desktop app. Reachy Mini is stopping...")
+        hooks.speak(phrase("goodbye", spoken_language), language=spoken_language)
+        hooks.stop_gesture()
+        print("Stop requested from desktop app. Goodbye.")
+        write_status("Reachy Mini MediLens stopped from the desktop app.")
 
 
 class ImageFileHooks(ReachyMiniHooks):
@@ -646,6 +704,18 @@ if __name__ == "__main__":
         "--input-device",
         help="Optional microphone name or index for listening. Defaults to the system default input.",
     )
+    parser.add_argument(
+        "--status-file",
+        help="Optional path where the app writes the latest listening/heard status for a desktop UI.",
+    )
+    parser.add_argument(
+        "--result-file",
+        help="Optional path where the app writes the latest medicine/OCR result for a desktop UI.",
+    )
+    parser.add_argument(
+        "--stop-file",
+        help="Optional path; if this file appears, the Reachy app speaks goodbye and exits.",
+    )
     args = parser.parse_args()
 
     if args.listen and not args.use_reachy:
@@ -679,6 +749,7 @@ if __name__ == "__main__":
             timeout_seconds=args.timeout,
             max_vision_attempts_per_orientation=args.max_vision_attempts,
             show_result=args.show_result,
+            result_file=args.result_file,
         )
         with ReachyMini(**reachy_kwargs) as mini:
             hooks = ReachySdkHooks(mini)
@@ -691,6 +762,8 @@ if __name__ == "__main__":
                         input_device=input_device,
                         language=args.language,
                         mic=args.mic,
+                        status_file=args.status_file,
+                        stop_file=args.stop_file,
                     )
                 except KeyboardInterrupt:
                     print("\nStopped listening.")
