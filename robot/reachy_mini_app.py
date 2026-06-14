@@ -513,15 +513,20 @@ def run_listen_loop(
     model_size: str = "base.en",
     input_device=None,
     language: str = "en",
+    mic: str = "laptop",
 ) -> None:
-    """Listen on the laptop microphone and run the identify flow on the cue."""
+    """Listen on the laptop or Reachy microphone and run identify on the cue."""
     from voice_listener import VoiceListener
 
-    print(f"Loading speech recognition (language={language})...")
+    reachy_media = getattr(hooks, "mini", None)
+    reachy_media = reachy_media.media if (mic == "reachy" and reachy_media is not None) else None
+
+    print(f"Loading speech recognition (language={language}, mic={mic})...")
     listener = VoiceListener(
         model_size=model_size,
         input_device=input_device,
         language=language,
+        reachy_media=reachy_media,
     )
 
     def announce_ready():
@@ -576,7 +581,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Test the MediLens Reachy Mini flow with an image file.")
     parser.add_argument("image", nargs="?", help="Path to a medicine label image.")
-    parser.add_argument("--service-url", help="Optional desktop MediLens robot service URL, for example http://192.168.1.25:8765")
+    parser.add_argument("--service-url", help="Optional desktop MediLens robot service URL, for example http://<LAPTOP_IP>:8765")
     parser.add_argument("--vision-ocr-url", default=DEFAULT_VISION_OCR_URL)
     parser.add_argument("--use-reachy", action="store_true", help="Capture the image from Reachy Mini instead of an image file.")
     parser.add_argument(
@@ -624,6 +629,12 @@ if __name__ == "__main__":
         "--whisper-model",
         default="base.en",
         help="faster-whisper model size for speech recognition (e.g. tiny.en, base.en, small.en).",
+    )
+    parser.add_argument(
+        "--mic",
+        choices=["laptop", "reachy"],
+        default="laptop",
+        help="Which microphone to listen through: 'laptop' (default) or 'reachy' (Reachy Mini's own mic, requires --use-reachy).",
     )
     parser.add_argument(
         "--language",
@@ -679,6 +690,7 @@ if __name__ == "__main__":
                         model_size=args.whisper_model,
                         input_device=input_device,
                         language=args.language,
+                        mic=args.mic,
                     )
                 except KeyboardInterrupt:
                     print("\nStopped listening.")

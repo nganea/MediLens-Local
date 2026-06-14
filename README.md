@@ -175,7 +175,7 @@ ipconfig
 Look for the IPv4 address on the Wi-Fi adapter, for example:
 
 ```text
-192.168.1.25
+<LAPTOP_IP>
 ```
 
 You can test the service from the same laptop:
@@ -190,24 +190,24 @@ You do not need to start Reachy Mini until the desktop service is running. When 
 
 - Put Reachy Mini and the laptop/desktop on the same Wi-Fi network.
 - Make sure the laptop firewall allows inbound connections on port `8765`.
-- Point Reachy at the laptop service URL, for example `http://192.168.1.25:8765`.
+- Point Reachy at the laptop service URL, for example `http://<LAPTOP_IP>:8765`.
 
 You can test the Reachy-side flow with an image file before wiring the real Reachy SDK:
 
 ```bash
-python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://192.168.1.25:8765 --timeout 90
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://<LAPTOP_IP>:8765 --timeout 90
 ```
 
 The Reachy-side test command uses `Full auto` image orientation by default. You can override it for faster tests:
 
 ```bash
-python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://192.168.1.25:8765 --orientation-mode "Normal first" --timeout 90
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://<LAPTOP_IP>:8765 --orientation-mode "Normal first" --timeout 90
 ```
 
 The default MiniCPM-V 4.6 retry setting is `2` attempts per orientation, but the second attempt is only used when the first attempt does not produce a useful medicine match. To make a faster single-pass test:
 
 ```bash
-python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://192.168.1.25:8765 --max-vision-attempts 1 --timeout 90
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://<LAPTOP_IP>:8765 --max-vision-attempts 1 --timeout 90
 ```
 
 Replace the methods on `ReachyMiniHooks` with the actual Reachy Mini SDK calls for:
@@ -292,7 +292,7 @@ The simplest phone workflow is:
 4. On the phone, open this address, replacing the example IP address with your computer's IP address:
 
    ```text
-   http://192.168.1.25:7860
+   http://<LAPTOP_IP>:7860
    ```
 
 5. In the image box, choose upload. On most phones, the upload picker lets you take a new photo with the phone camera.

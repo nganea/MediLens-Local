@@ -14,6 +14,7 @@ setup (hence the "No Reachy Mini Audio USB device found!" warning at startup).
 from collections import deque
 import queue
 import sys
+import time
 
 import numpy as np
 
@@ -51,7 +52,12 @@ class VoiceListener:
         input_device=None,
         language: str = "en",
         multilingual_model: str = "small",
+        reachy_media=None,
     ):
+        # When reachy_media is set, listen through Reachy Mini's own microphone
+        # (any object exposing get_audio_sample() -> (N,2) float32 @ 16 kHz)
+        # instead of the laptop microphone.
+        self.reachy_media = reachy_media
         self.end_silence_frames = int(end_silence_seconds / FRAME_SECONDS)
         self.min_speech_frames = int(min_speech_seconds / FRAME_SECONDS)
         self.max_utterance_frames = int(max_utterance_seconds / FRAME_SECONDS)
@@ -81,6 +87,12 @@ class VoiceListener:
 
     def flush(self) -> None:
         """Drop any audio buffered so far (used after Reachy finishes talking)."""
+        if self.reachy_media is not None:
+            # Drain Reachy's audio appsink backlog (e.g. its own voice).
+            for _ in range(5000):
+                if self.reachy_media.get_audio_sample() is None:
+                    break
+            return
         while not self._audio_queue.empty():
             try:
                 self._audio_queue.get_nowait()
@@ -88,10 +100,32 @@ class VoiceListener:
                 break
 
     def _frames(self):
-        """Yield fixed-size mono frames from the microphone queue."""
+        """Yield fixed-size mono frames from the laptop microphone queue."""
         buffer = np.zeros(0, dtype=np.float32)
         while True:
             buffer = np.concatenate([buffer, self._audio_queue.get()])
+            while len(buffer) >= FRAME_SAMPLES:
+                yield buffer[:FRAME_SAMPLES]
+                buffer = buffer[FRAME_SAMPLES:]
+
+    def _reachy_frames(self):
+        """Yield fixed-size mono frames from Reachy Mini's microphone.
+
+        Polls get_audio_sample() (stereo float32 @ 16 kHz), mixes to mono, and
+        chunks into analysis frames. Drops audio while muted (e.g. while Reachy
+        is speaking) so the robot does not transcribe its own voice.
+        """
+        buffer = np.zeros(0, dtype=np.float32)
+        while True:
+            sample = self.reachy_media.get_audio_sample()
+            if sample is None:
+                time.sleep(0.01)
+                continue
+            if self.muted:
+                buffer = np.zeros(0, dtype=np.float32)
+                continue
+            mono = np.asarray(sample, dtype=np.float32).mean(axis=1)
+            buffer = np.concatenate([buffer, mono])
             while len(buffer) >= FRAME_SAMPLES:
                 yield buffer[:FRAME_SAMPLES]
                 buffer = buffer[FRAME_SAMPLES:]
@@ -135,19 +169,25 @@ class VoiceListener:
         calibrated, to signal that the system is ready to be spoken to. The
         caller must stay quiet until on_ready fires (calibration needs silence).
         """
-        import sounddevice as sd
+        import contextlib
 
-        stream = sd.InputStream(
-            samplerate=SAMPLE_RATE,
-            channels=1,
-            dtype="float32",
-            blocksize=FRAME_SAMPLES,
-            device=self.input_device,
-            callback=self._callback,
-        )
-        with stream:
+        if self.reachy_media is not None:
+            frames = self._reachy_frames()
+            source_context = contextlib.nullcontext()
+        else:
+            import sounddevice as sd
+
+            source_context = sd.InputStream(
+                samplerate=SAMPLE_RATE,
+                channels=1,
+                dtype="float32",
+                blocksize=FRAME_SAMPLES,
+                device=self.input_device,
+                callback=self._callback,
+            )
             frames = self._frames()
 
+        with source_context:
             # Calibrate the silence floor from the first ~1 second of audio.
             # Stay quiet during this; the caller is told to wait via on_ready.
             print("[listener] calibrating microphone, please stay quiet...", file=sys.stderr)
