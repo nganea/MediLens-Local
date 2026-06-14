@@ -267,121 +267,142 @@ Important recent changes
 - MiniCPM timeout now keeps the page open and returns an N/A/manual-entry prompt.
 - Page load orientation now starts as Normal first.
 
-Reachy Mini robot testing status
---------------------------------
-The Reachy Mini path was reviewed on 2026-06-14.
+Reachy Mini voice assistant status (updated 2026-06-14)
+======================================================
+The Reachy Mini integration is COMPLETE and confirmed working on real
+hardware. Everything runs on the laptop; the Reachy Mini SDK connects to the
+robot over Wi-Fi (reachy-mini.local). The app is fully offline and uses no
+cloud APIs.
 
-Important files:
+Confirmed working end-to-end on hardware: robot camera -> laptop -> MiniCPM-V
+-> medicines.csv -> Tiny Aya (for non-English) -> spoken answer on Reachy's
+speaker, with head + antenna motion. Hands-free voice trigger also confirmed.
 
+Robot files
+-----------
 robot/medilens_robot_service.py
-- Desktop/laptop HTTP service for Reachy Mini demos.
-- Run this on the laptop that has the MediLens dependencies and MiniCPM-V available.
-- Exposes:
-  - GET /health
-  - GET /status
-  - POST /identify
-- Reachy Mini should call this service over Wi-Fi with a base64 image.
+- Laptop HTTP service. GET /health, GET /status, POST /identify (base64 image).
 
 robot/reachy_mini_app.py
-- Reachy-side adapter scaffold and image-file test entry point.
-- The remote service client path works with an image file.
-- The real hardware integration still needs the Reachy Mini SDK calls to be wired into ReachyMiniHooks.
+- Main robot adapter + CLI. ReachySdkHooks now fully wired to the Reachy Mini
+  SDK: camera capture (with first-frame warm-up), head "thinking" motion,
+  antenna ready/stop gestures, and speech via mini.media.play_sound().
+- Modes: single image file, single live capture (--use-reachy), and hands-free
+  continuous voice mode (--use-reachy --listen).
 
-Confirmed working Git Bash test
--------------------------------
-The following command worked from Git Bash:
+robot/voice_listener.py
+- Microphone listener: energy-VAD utterance segmentation + faster-whisper STT,
+  hallucination filtering, mic calibration, a clear "ready" cue, and a debug
+  mode. Works with the laptop mic OR Reachy Mini's own mic.
 
-py -3 robot/reachy_mini_app.py C:/Users/n_k_r/Downloads/MediLensLocal_Img/i1.jpeg --service-url http://<LAPTOP_IP>:8765 --timeout 90 --show-result
+robot/test_reachy_mic.py
+- Standalone check of whether Reachy streams its microphone audio to the laptop.
 
-This confirms the important laptop-side chain works:
+Speech (all offline)
+--------------------
+Text-to-speech:
+- English: Kokoro neural voice "bf_emma" (kokoro-onnx).
+- Romanian/German/French/Italian/Spanish: Piper voices
+  (ro_RO-mihai, de_DE-thorsten, fr_FR-siwis, it_IT-paola, es_ES-davefx).
+- Fallback: built-in Windows SAPI if a neural voice fails.
+- Voice model files live in robot/voices/ (gitignored, downloaded once).
 
-image file -> reachy_mini_app.py -> MediLens robot service -> MiniCPM-V -> MediLens database -> spoken_response
+Speech-to-text:
+- faster-whisper. English-only uses base.en (fast); ro/de/fr/it/es/auto use the
+  multilingual "small" model. Mic capture via sounddevice.
+- NOTE: Cohere-transcribe and NVIDIA Nemotron were evaluated and REJECTED
+  (Cohere has no Romanian + gated + slow on CPU; Nemotron needs GPU/Linux).
+  All Cohere code/models were removed.
 
-Recommended Reachy Mini startup sequence
-----------------------------------------
-Use Git Bash unless PowerShell is needed for a Windows-specific command.
+Hands-free conversation flow
+----------------------------
+1. Loads + calibrates the mic (stay quiet), then Reachy waggles its antennas
+   and says "I am listening" - that is the go-ahead cue.
+2. Wake cue = the name "Reachy" + a medicine word. Matching strips accents and
+   matches word stems, so it handles the Romanian suffixed (enclitic) article
+   ("medicamentul", "medicamentului", "medicamente") and German "Medikament",
+   French "medicament", Italian "medicinale", Spanish "medicamento".
+   Whisper mishearings of "Reachy" (Riki/Reiki/Richie...) are matched by prefix.
+3. Reachy says "Okay", captures the label, does the thinking motion, identifies
+   the medicine, and speaks the answer in the SAME language you asked in.
+4. It keeps listening for the next question. A slow/timed-out identification no
+   longer crashes - Reachy apologises and keeps listening.
+5. Say "Reachy stop" (works in every language) to end: Reachy gives a goodbye,
+   lowers its antennas, and exits.
 
-1. Start MiniCPM-V on the laptop:
+Languages: English, Romanian, German, French, Italian, Spanish. With
+--language auto, Whisper detects the language per question; non-English answers
+are translated by Tiny Aya and spoken with that language's voice.
 
-llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
+Microphone choice
+-----------------
+--mic laptop (default): listen through the laptop microphone.
+--mic reachy: listen through Reachy Mini's own mic (ReSpeaker, 16 kHz stereo
+  over WebRTC via mini.media.get_audio_sample()). Run test_reachy_mic.py first
+  to confirm the robot actually streams its mic audio.
 
-2. In another Git Bash window, start the MediLens robot service:
+Startup sequence (three Git Bash windows, all on the laptop)
+------------------------------------------------------------
+1. Vision model:
+   llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
+2. Translation model (needed for non-English answers):
+   llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080
+3. Robot service:
+   cd ~/Documents/Codex/MediLens
+   py -3 robot/medilens_robot_service.py --host 0.0.0.0 --port 8765
 
-cd ~/Documents/Codex/MediLens
-py -3 robot/medilens_robot_service.py --host 0.0.0.0 --port 8765
+Health checks: curl http://127.0.0.1:8765/health and /status.
+All URLs are localhost (127.0.0.1) because everything runs on the laptop. No
+laptop IP is needed for the working setup.
 
-3. Confirm service health:
+Run commands
+------------
+Single image-file test:
+  py -3 robot/reachy_mini_app.py PATH/TO/label.jpg --service-url http://127.0.0.1:8765 --timeout 90 --show-result
 
-curl http://127.0.0.1:8765/health
+Hands-free multilingual voice demo (English default voice + Emma):
+  py -3 robot/reachy_mini_app.py --use-reachy --listen --language auto \
+    --orientation-mode "Normal first" --max-vision-attempts 1 \
+    --service-url http://127.0.0.1:8765 --reachy-host reachy-mini.local \
+    --timeout 90 --show-result
 
-4. Confirm MiniCPM reachability through the service:
+Use Reachy's own mic instead of the laptop mic: add --mic reachy.
+Use "Normal first" orientation (fast) because the label is held upright.
 
-curl http://127.0.0.1:8765/status
+New Python dependencies this session
+------------------------------------
+faster-whisper, sounddevice, kokoro-onnx, piper-tts (plus espeakng-loader,
+phonemizer-fork pulled in by kokoro). onnxruntime was already present. The
+unused "transformers" package (from the abandoned Cohere path) was uninstalled.
 
-5. Find the laptop Wi-Fi IP address:
+Harmless startup noise to ignore
+--------------------------------
+- "No Reachy Mini Audio USB device found!" (client mic-capture path; robot
+  playback via play_sound still works).
+- WebRTC "Signalling error: receiver is gone" printed on exit.
+- phonemizer "words count mismatch" warnings from Piper.
 
-ipconfig
+Git / privacy
+-------------
+- Branch: experiments. The voice assistant work is committed.
+- The laptop's real IP was removed from all files AND from git history; docs now
+  use the placeholder <LAPTOP_IP>. Everything is localhost in practice.
 
-The currently confirmed laptop service URL was:
-
-http://<LAPTOP_IP>:8765
-
-This IP can change if the laptop reconnects to Wi-Fi, so check ipconfig again before a demo.
-
-6. Turn on Reachy Mini and put Reachy Mini on the same Wi-Fi as the laptop.
-
-7. From Reachy Mini or its runtime environment, confirm it can reach:
-
-http://<LAPTOP_IP>:8765/health
-
-If this fails, check:
-- laptop and Reachy are on the same Wi-Fi
-- laptop IP address is still <LAPTOP_IP>
-- robot service is still running
-- Windows Firewall allows inbound TCP traffic on port 8765
-
-Remaining Reachy Mini SDK work
-------------------------------
-The real robot integration is not finished yet. In robot/reachy_mini_app.py, replace the placeholder methods in ReachyMiniHooks with the actual Reachy Mini SDK calls:
-
-- speak
-- capture_image
-- start_thinking_motion
-- stop_thinking_motion
-
-Current placeholder class starts around:
-
-class ReachyMiniHooks:
-    def speak(self, text: str) -> None:
-        print(f"Reachy says: {text}")
-
-    def capture_image(self) -> Image.Image:
-        raise NotImplementedError("Connect this to the Reachy Mini camera API.")
-
-    def start_thinking_motion(self) -> None:
-        print("Reachy starts thinking motion.")
-
-    def stop_thinking_motion(self) -> None:
-        print("Reachy stops thinking motion.")
-
-The desired final shape is to initialize a Reachy SDK object, pass it into a hooks class, and call identify_once with:
-
-RemoteMediLensClient("http://<LAPTOP_IP>:8765")
-
-Do not change the core medicine recognition pipeline unless necessary. The image-file test proved the service and recognition path already works.
-
-Reachy Mini SDK installation note
----------------------------------
-The exact Reachy Mini SDK package/import name was not confirmed from public search during the chat. Use the official hackathon Reachy Mini instructions if available.
-
-Likely installation pattern:
-
-py -3 -m pip install <official-reachy-mini-sdk-package>
-
-Then verify with something like:
-
-py -3 -m pip list | grep -i reachy
-
-or the import command from the official docs.
-
-Once the official SDK sample code is available, map its calls into the four ReachyMiniHooks methods above.
+Hackathon context (Build Small Hackathon, huggingface.co/build-small-hackathon)
+-------------------------------------------------------------------------------
+- Submission deadline: 2026-06-15. Submit THREE things: a Gradio app hosted as a
+  Hugging Face Space under the "build-small-hackathon" org, a short demo video,
+  and a social post. App must be Gradio, total model params <= 32B.
+- IMPORTANT: the submission artifact is the MediLens DESKTOP Gradio app
+  (app.py), not the robot. The Reachy Mini voice assistant is a strong demo
+  asset for the video/post, not the submitted Space.
+- Good fit: "Backyard AI" track (real personal need - reading medicine labels
+  for a family member). Sponsor alignment: OpenBMB/MiniCPM ($10k prize) and
+  Cohere/Tiny Aya are both used. Bonus quests hit: llama.cpp runtime, offline
+  execution, custom UI.
+- OPEN QUESTIONS for the Gradio/HF Discord (not answered on the page):
+  (a) eligibility if not registered by the June 3 cutoff;
+  (b) how to get write access to the org / exact submit mechanics;
+  (c) whether the Space must run live for judges or a recorded demo is OK -
+      this matters because the local llama-servers (MiniCPM, Tiny Aya) will not
+      exist on a cloud Space without GPU hosting or an API.
