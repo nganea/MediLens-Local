@@ -1,13 +1,26 @@
-﻿MediLens Local: App Status Summary For New Codex Chat
+MediLens Local: App Status Summary For New Codex Chat
 =====================================================
 
 Current project folder
 ----------------------
 C:\Users\n_k_r\Documents\Codex\MediLens
 
-Start the app from Git Bash:
+Current date/context
+--------------------
+Updated: 2026-06-15
+
+This project is the MediLens Local desktop Gradio app plus a Reachy Mini demo
+integration. The current branch is `experiments`.
+
+Start the desktop app from Git Bash:
 
 cd ~/Documents/Codex/MediLens
+py app.py
+
+To start the desktop app with llama.cpp GPU offload:
+
+cd ~/Documents/Codex/MediLens
+export MEDILENS_LLAMA_GPU_LAYERS=99
 py app.py
 
 Open the app at:
@@ -19,15 +32,18 @@ This folder is a Git repository.
 
 Branches:
 - main: stable cleaned version
-- experiments: current branch for trying changes safely
+- experiments: current branch for active work and hackathon changes
 
-The current working branch is usually intended to be `experiments`.
+Recent committed work on experiments:
+- Commit 9402d67: Add Reachy Mini desktop controls
 
 Core app
 --------
 The app is called MediLens Local: Medicine Label Helper.
 
-It is a local-first Gradio web app that helps read medicine labels from an uploaded or captured image. It extracts text from the image, matches the label against a local medicine database, and displays:
+It is a local-first Gradio web app that helps read medicine labels from an
+uploaded or captured image. It extracts text from the image, matches the label
+against a local medicine database, and displays:
 
 - Medicine match
 - Medicine use
@@ -35,25 +51,32 @@ It is a local-first Gradio web app that helps read medicine labels from an uploa
 - Source URL
 - Extracted OCR text in Technical details
 
-The app does not use cloud APIs.
+The app does not call cloud APIs.
 
 Important files
 ---------------
 app.py
 - Main Gradio app.
+- Contains the desktop UI, model-server controls, Reachy Mini button/status
+  integration, and Reachy result polling into the desktop fields.
+
+medilens_core/models.py
+- Local llama.cpp server helpers.
+- Supports `MEDILENS_LLAMA_GPU_LAYERS`; when set to a positive integer such as
+  `99`, background `llama-server` launches include `-ngl 99`.
+
+medilens_core/pipeline.py
+- Shared medicine identification pipeline used by the robot service.
 
 medicines.csv
 - Active local medicine database used by the app.
 - Contains about 200 commonly used medicines.
-- Includes medicine names, brand names, common uses, safety warnings, source names, source URLs, review status, and notes.
 
 translation_glossary.csv
 - Reviewed translation glossary used to improve Tiny Aya phrasing.
 
 translation_glossary_suggestions.csv
 - Public translation suggestions submitted through the app.
-- Newest suggestions are shown at the top in the app.
-- Suggestions need human review before being copied into the active glossary.
 
 medicine_semantic_consistency_report.csv
 - Latest consistency report comparing database content with source URLs.
@@ -62,20 +85,29 @@ requirements.txt
 - Python dependencies.
 
 README.md
-- Setup and running instructions.
+- Setup and running instructions, including GPU offload notes.
 
 scripts/check_semantic_consistency.py
-- The only helper script currently kept in the scripts folder.
-- Uses medicines.csv by default.
-- Writes medicine_semantic_consistency_report.csv.
+- Helper script for comparing database content with medicine source URLs.
 
-Scripts folder cleanup
-----------------------
-The scripts folder was simplified. Older one-time database-building scripts were removed. The only remaining script is:
+robot/medilens_robot_service.py
+- Local HTTP service for Reachy Mini demos.
+- Endpoints: GET /health, GET /status, POST /identify.
 
-scripts/check_semantic_consistency.py
+robot/reachy_mini_app.py
+- Main Reachy Mini adapter and CLI.
+- Handles Reachy SDK camera capture, speech, head/antenna motion, hands-free
+  listening, status-file output, result-file output, and graceful stop.
 
-This script checks whether the common_uses and safety_warning columns semantically overlap with the medicine source URLs.
+robot/voice_listener.py
+- Offline microphone listener using energy VAD + faster-whisper.
+- Supports callbacks for "speech started" and "transcribing" status.
+
+robot/test_reachy_mic.py
+- Standalone check of whether Reachy streams its microphone audio to the laptop.
+
+static/medilens.css
+- App styling and layout adjustments.
 
 Local models
 ------------
@@ -91,67 +123,100 @@ MiniCPM-V 4.6:
 - Default URL: http://127.0.0.1:8081/v1/chat/completions
 - Model ref: openbmb/MiniCPM-V-4.6-gguf:Q4_K_M
 
-Recommended startup
--------------------
-Use three Git Bash windows.
+Model startup behavior
+----------------------
+The desktop app no longer starts local AI models just because the webpage loads.
 
-Window 1: Tiny Aya
+Instead:
+- When the user uploads an image or types a medicine name, the app checks/starts
+  local model servers.
+- While models are being checked or started, the Search button is disabled and
+  the text under it says "Loading AI models...".
+- If both model ports are already reachable, the app skips the loading state.
+- The user can also press "Check/retry local model servers" in Technical details.
+
+GPU offload behavior
+--------------------
+Set this before launching the app to ask llama.cpp to offload layers to GPU:
+
+export MEDILENS_LLAMA_GPU_LAYERS=99
+
+PowerShell equivalent:
+
+$env:MEDILENS_LLAMA_GPU_LAYERS="99"
+
+When set to a positive integer, the app starts background `llama-server` with:
+
+-ngl <value>
+
+For example, `MEDILENS_LLAMA_GPU_LAYERS=99` adds `-ngl 99`. This means "try to
+offload up to 99 layers"; in practice it is a common way to ask llama.cpp to
+offload as much as possible. It still depends on the user's GPU, VRAM, and
+whether their llama.cpp build supports GPU.
+
+Manual model startup commands
+-----------------------------
+CPU:
+
 llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080
-
-Window 2: MiniCPM-V
 llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
 
-Window 3: Gradio app
-cd ~/Documents/Codex/MediLens
-py app.py
+GPU:
 
-Main user workflow
-------------------
-1. Upload or capture a medicine label image.
-2. Optionally type the medicine name or label text.
-3. Select the language.
-4. Click Read medicine label.
-5. The app checks local model server status.
-6. MiniCPM-V and Tesseract work together to read the image.
-7. The app matches the OCR/manual text against medicines.csv.
-8. Tiny Aya optionally rewrites/translates the output.
-9. The app displays medicine match, medicine use, safety warning, source URL, and OCR details.
+llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080 -ngl 99
+llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081 -ngl 99
+
+Main desktop workflow
+---------------------
+1. Upload/capture a medicine label image, or type a medicine name.
+2. Select the language.
+3. If needed, the app checks/starts the local AI model servers.
+4. Click Search.
+5. MiniCPM-V and Tesseract work together to read the image.
+6. The app matches OCR/manual text against medicines.csv.
+7. Tiny Aya optionally rewrites/translates the result.
+8. The app displays medicine match, medicine use, safety warning, source URL,
+   and OCR details.
 
 OCR behavior
 ------------
 MiniCPM-V 4.6 and Tesseract are enabled together by default.
 
-Tesseract is useful for debugging and fallback text, but if MiniCPM-V cannot be reached or cannot read the image, the app should not trust Tesseract-only OCR for matching because it can produce incorrect medicine names.
+Tesseract is useful for debugging and fallback text, but if MiniCPM-V cannot be
+reached or cannot read the image, the app should not trust Tesseract-only OCR
+for medicine matching because it can produce incorrect medicine names.
 
 If MiniCPM-V times out:
 - The webpage stays open.
-- The app tries to stop waiting for the model result.
 - Medicine match shows N/A.
-- Medicine use asks the user to type the medicine name or label text and search again.
+- Medicine use asks the user to type the medicine name or label text and search
+  again.
 - Safety warning shows N/A.
 - The manual label field is highlighted.
 
 Processing status
 -----------------
-When the user clicks Read medicine label, the status text appears immediately under the button.
+When the user clicks Search, the status text appears immediately under the
+button.
 
-It uses the timeout value entered by the user, for example:
+Examples:
 
+Loading AI models...
 Processing image... 0/60s
 Processing image... 18/60s
 
-The app no longer reloads the webpage at the timeout.
+The app no longer reloads the webpage at timeout.
 
-Image and layout notes
-----------------------
+Layout notes
+------------
 Current main layout:
 
 Left panel:
 - Medicine image upload/capture
-- Type medicine label
+- Medicine name field
 - Language
-- Read medicine label button
-- Processing image status text
+- Search button
+- Processing/model-loading status text
 
 Right panel:
 - Medicine match
@@ -164,10 +229,26 @@ Below:
 - Improve translation section
 - Technical details section
 
-The image field was shortened to 280px height to reserve space for processing text without making the left panel taller than the right panel.
+Technical details includes:
+- Max image processing time
+- Image orientation mode
+- Max attempts per image orientation
+- Extracted OCR text
+- Model usage checkboxes
+- Local model server status
+- Check/retry local model servers button
+- Model server URLs accordion, collapsed by default
+- Reachy Mini MediLens status
+- Start/Stop Reachy Mini MediLens button
 
-The helper sentence under the image was hidden:
-"Upload an image, or use the camera option to capture a new photo."
+Recent UI/layout tweaks:
+- Model server URLs moved under "Check/retry local model servers".
+- Model server URLs accordion starts collapsed.
+- Extracted OCR text box height is 200px.
+- Reachy status textbox was made smaller.
+- The Reachy button labels are:
+  - Start Reachy Mini MediLens
+  - Stop Reachy Mini MediLens
 
 Orientation behavior
 --------------------
@@ -176,6 +257,9 @@ Default image orientation mode on page load is Normal first.
 Uploaded images use Normal first.
 
 Full auto should only be selected for desktop webcam capture.
+
+Desktop default "Max attempts per image orientation" is 2. Reachy Mini uses 1
+attempt for speed.
 
 Language behavior
 -----------------
@@ -189,25 +273,25 @@ Supported languages:
 
 The language dropdown is alphabetized.
 
-The app can choose the initial language from the browser language setting, while staying local.
+The app can choose the initial language from the browser language setting while
+staying local.
 
 When the language changes:
 - Field labels and page text update.
 - Existing result fields are cleared.
-- The user must click Read medicine label again.
-
-This avoids flickering and avoids showing output in the old language after a language change.
+- The user must click Search again.
 
 Translation behavior
 --------------------
-Tiny Aya is used to make the medicine use and safety warning easier to read and to translate them.
+Tiny Aya is used to make medicine use and safety warning easier to read and to
+translate them.
 
 Desired explanation style:
 - Like writing for a 14-15 year old.
 - Maximum 3 short sentences.
 - Non-repeating.
 - No dosage instructions.
-- Avoid unnecessary medicine form details such as tablets, creams, drops, or capsules unless clinically necessary.
+- Avoid unnecessary medicine form details unless clinically necessary.
 
 Safety warning style:
 - Avoid repeating generic and medicine-specific warnings.
@@ -218,14 +302,13 @@ Improve translation section
 ---------------------------
 The app has an "Improve translation" section above Technical details.
 
-It explains that Tiny Aya is useful for translation but not perfect.
-
 Users can submit public glossary suggestions with:
 - Language
 - Bad phrase
 - Preferred phrase
 
-The public suggestions table loads when the app opens and updates immediately after a new suggestion is submitted. Suggestions are not automatically applied to the active glossary; they need human review first.
+Suggestions are not automatically applied to the active glossary; they need
+human review first.
 
 Known Romanian glossary example:
 - Bad phrase: ochi lacrimogeni
@@ -247,56 +330,107 @@ It should:
 - Encourage checking with a pharmacist or doctor if unsure.
 - Use N/A when the app cannot reliably identify or process the medicine.
 
-Current source/database note shown in app
------------------------------------------
-The app tells users it uses:
-- MiniCPM for reading image text.
-- Tiny Aya Global for generating text.
-- A curated local database of 200 commonly used medicines in the UK and USA.
-- Information from NHS Medicines A to Z and British National Formulary Drugs A to Z.
-- OpenAI Codex was used to develop the app.
+Reachy Mini desktop integration
+===============================
+The desktop app now has a Reachy Mini control in Technical details.
 
-Important recent changes
+Button:
+- Start Reachy Mini MediLens
+- Stop Reachy Mini MediLens
+
+Before starting, the status box reminds the user to:
+- Turn on Reachy Mini at reachy-mini.local:8000.
+- Make sure all robot applications are off.
+- Allow Windows Firewall if it asks for permission.
+
+The Reachy button does nothing on page load. It only starts after a user presses
+the button.
+
+When Start is pressed:
+- The desktop app clears these fields:
+  - Photo
+  - Medicine name
+  - Medicine match
+  - Medicine use
+  - Safety warning
+  - Source
+  - Extracted OCR text
+- The local robot service starts if needed.
+- The hands-free Reachy app starts in the background.
+- The app uses Reachy's own microphone by default:
+  --mic reachy
+- The app writes logs/status/result files under robot/logs/.
+
+Reachy logs/status files
 ------------------------
-- Repository copied to C:\Users\n_k_r\Documents\Codex\MediLens.
-- README paths updated to cd ~/Documents/Codex/MediLens.
-- scripts folder simplified to one consistency-check script.
-- Image height shortened to 280px.
-- Processing text moved closer to the Read button.
-- Browser timeout reload removed.
-- MiniCPM timeout now keeps the page open and returns an N/A/manual-entry prompt.
-- Page load orientation now starts as Normal first.
+These are gitignored:
 
-Reachy Mini voice assistant status (updated 2026-06-14)
-======================================================
-The Reachy Mini integration is COMPLETE and confirmed working on real
-hardware. Everything runs on the laptop; the Reachy Mini SDK connects to the
-robot over Wi-Fi (reachy-mini.local). The app is fully offline and uses no
-cloud APIs.
+robot/logs/medilens_robot_service.log
+robot/logs/reachy_mini_app.log
+robot/logs/reachy_status.txt
+robot/logs/reachy_result.json
+robot/logs/reachy_stop_requested.txt
 
-Confirmed working end-to-end on hardware: robot camera -> laptop -> MiniCPM-V
--> medicines.csv -> Tiny Aya (for non-English) -> spoken answer on Reachy's
-speaker, with head + antenna motion. Hands-free voice trigger also confirmed.
+The desktop app polls Reachy status every 3 seconds with queue=False, so it
+should not block normal image upload/search events.
 
-Robot files
------------
-robot/medilens_robot_service.py
-- Laptop HTTP service. GET /health, GET /status, POST /identify (base64 image).
+Reachy status box behavior
+--------------------------
+The Reachy Mini MediLens status box can show:
+- Startup/reminder text.
+- "Reachy Mini hears speech. Keep speaking..."
+- "Reachy Mini heard you. Transcribing..."
+- The final "Reachy heard [...]" transcription.
+- Whether the medicine cue was detected.
+- Whether the medicine label is being checked.
+- Stop/shutdown status.
 
-robot/reachy_mini_app.py
-- Main robot adapter + CLI. ReachySdkHooks now fully wired to the Reachy Mini
-  SDK: camera capture (with first-frame warm-up), head "thinking" motion,
-  antenna ready/stop gestures, and speech via mini.media.play_sound().
-- Modes: single image file, single live capture (--use-reachy), and hands-free
-  continuous voice mode (--use-reachy --listen).
+Reachy result display in desktop app
+------------------------------------
+When Reachy returns a medicine result, the desktop app now updates:
+- Medicine match
+- Medicine use
+- Safety warning
+- Source
+- Extracted OCR text
+- Internal match text state
 
-robot/voice_listener.py
-- Microphone listener: energy-VAD utterance segmentation + faster-whisper STT,
-  hallucination filtering, mic calibration, a clear "ready" cue, and a debug
-  mode. Works with the laptop mic OR Reachy Mini's own mic.
+This works by having robot/reachy_mini_app.py write robot/logs/reachy_result.json
+and app.py read that file during the Reachy status timer.
 
-robot/test_reachy_mic.py
-- Standalone check of whether Reachy streams its microphone audio to the laptop.
+Reachy spoken prompt
+--------------------
+The English listening prompt is now:
+
+"I am listening. When you are ready ask me about a medicine."
+
+The English goodbye phrase is:
+
+"Okay, I'll stop now. Goodbye."
+
+Graceful Reachy shutdown
+------------------------
+When the desktop Stop button is pressed:
+- app.py writes robot/logs/reachy_stop_requested.txt.
+- robot/reachy_mini_app.py notices the file.
+- Reachy says the goodbye phrase.
+- Reachy lowers antennas.
+- The Reachy process exits.
+- app.py stops the local robot service.
+- If the Reachy app does not exit within 12 seconds, app.py force-stops it as a
+  fallback.
+
+Reachy run command equivalent
+-----------------------------
+The desktop button effectively runs:
+
+py -3 robot/reachy_mini_app.py --use-reachy --listen --language auto \
+  --orientation-mode "Normal first" --max-vision-attempts 1 \
+  --service-url http://127.0.0.1:8765 --reachy-host reachy-mini.local \
+  --reachy-port 8000 --timeout 90 --mic reachy --show-result \
+  --status-file robot/logs/reachy_status.txt \
+  --result-file robot/logs/reachy_result.json \
+  --stop-file robot/logs/reachy_stop_requested.txt
 
 Speech (all offline)
 --------------------
@@ -305,104 +439,67 @@ Text-to-speech:
 - Romanian/German/French/Italian/Spanish: Piper voices
   (ro_RO-mihai, de_DE-thorsten, fr_FR-siwis, it_IT-paola, es_ES-davefx).
 - Fallback: built-in Windows SAPI if a neural voice fails.
-- Voice model files live in robot/voices/ (gitignored, downloaded once).
+- Voice model files live in robot/voices/ and are gitignored.
 
 Speech-to-text:
-- faster-whisper. English-only uses base.en (fast); ro/de/fr/it/es/auto use the
-  multilingual "small" model. Mic capture via sounddevice.
-- NOTE: Cohere-transcribe and NVIDIA Nemotron were evaluated and REJECTED
-  (Cohere has no Romanian + gated + slow on CPU; Nemotron needs GPU/Linux).
-  All Cohere code/models were removed.
+- faster-whisper.
+- English-only uses base.en.
+- ro/de/fr/it/es/auto use the multilingual small model.
+- The app can listen through the laptop mic or Reachy Mini's own mic.
+- The desktop button defaults to Reachy Mini's own mic.
 
-Hands-free conversation flow
+Reachy hands-free conversation flow
+-----------------------------------
+1. Loads + calibrates the mic.
+2. Reachy waggles antennas and says the listening prompt.
+3. Wake cue = Reachy name + a medicine word.
+4. Reachy says Okay, captures the label, does the thinking motion, identifies
+   the medicine, and speaks the answer in the same language it detected.
+5. It keeps listening for the next question.
+6. Say "Reachy stop" or press Stop Reachy Mini MediLens to end.
+
+Known harmless startup noise
 ----------------------------
-1. Loads + calibrates the mic (stay quiet), then Reachy waggles its antennas
-   and says "I am listening" - that is the go-ahead cue.
-2. Wake cue = the name "Reachy" + a medicine word. Matching strips accents and
-   matches word stems, so it handles the Romanian suffixed (enclitic) article
-   ("medicamentul", "medicamentului", "medicamente") and German "Medikament",
-   French "medicament", Italian "medicinale", Spanish "medicamento".
-   Whisper mishearings of "Reachy" (Riki/Reiki/Richie...) are matched by prefix.
-3. Reachy says "Okay", captures the label, does the thinking motion, identifies
-   the medicine, and speaks the answer in the SAME language you asked in.
-4. It keeps listening for the next question. A slow/timed-out identification no
-   longer crashes - Reachy apologises and keeps listening.
-5. Say "Reachy stop" (works in every language) to end: Reachy gives a goodbye,
-   lowers its antennas, and exits.
+- "No Reachy Mini Audio USB device found!" can appear from the client mic-capture
+  path; robot playback via play_sound can still work.
+- WebRTC "Signalling error: receiver is gone" can appear on exit.
+- phonemizer "words count mismatch" warnings from Piper can appear.
 
-Languages: English, Romanian, German, French, Italian, Spanish. With
---language auto, Whisper detects the language per question; non-English answers
-are translated by Tiny Aya and spoken with that language's voice.
-
-Microphone choice
+Performance notes
 -----------------
---mic laptop (default): listen through the laptop microphone.
---mic reachy: listen through Reachy Mini's own mic (ReSpeaker, 16 kHz stereo
-  over WebRTC via mini.media.get_audio_sample()). Run test_reachy_mic.py first
-  to confirm the robot actually streams its mic audio.
+- MiniCPM-V image OCR is the slowest step.
+- `MEDILENS_LLAMA_GPU_LAYERS=99` can speed model inference if llama.cpp is built
+  with GPU support and the GPU has enough VRAM.
+- Desktop upload uses Normal first orientation, but defaults to 2 attempts per
+  image orientation for caution.
+- Reachy uses Normal first and 1 attempt for speed.
+- Reachy status polling is every 3 seconds and queue=False so it should not slow
+  desktop uploads.
+- If Reachy and desktop both call MiniCPM at the same time, they may compete for
+  the same model server/GPU.
 
-Startup sequence (three Git Bash windows, all on the laptop)
-------------------------------------------------------------
-1. Vision model:
-   llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
-2. Translation model (needed for non-English answers):
-   llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080
-3. Robot service:
-   cd ~/Documents/Codex/MediLens
-   py -3 robot/medilens_robot_service.py --host 0.0.0.0 --port 8765
+Hackathon context
+-----------------
+Build Small Hackathon submission deadline: 2026-06-15.
 
-Health checks: curl http://127.0.0.1:8765/health and /status.
-All URLs are localhost (127.0.0.1) because everything runs on the laptop. No
-laptop IP is needed for the working setup.
+Submission requires:
+- A Gradio app hosted as a Hugging Face Space under the build-small-hackathon org.
+- A short demo video.
+- A social post.
 
-Run commands
-------------
-Single image-file test:
-  py -3 robot/reachy_mini_app.py PATH/TO/label.jpg --service-url http://127.0.0.1:8765 --timeout 90 --show-result
+Important:
+- The submitted artifact is the MediLens desktop Gradio app (app.py).
+- The Reachy Mini voice assistant is a demo/video/social-post asset, not the
+  submitted Space itself.
+- The app is a good fit for the Backyard AI track.
+- Sponsor alignment: MiniCPM/OpenBMB and Tiny Aya/Cohere are used.
+- Bonus alignment: llama.cpp runtime, offline execution, custom UI.
 
-Hands-free multilingual voice demo (English default voice + Emma):
-  py -3 robot/reachy_mini_app.py --use-reachy --listen --language auto \
-    --orientation-mode "Normal first" --max-vision-attempts 1 \
-    --service-url http://127.0.0.1:8765 --reachy-host reachy-mini.local \
-    --timeout 90 --show-result
-
-Use Reachy's own mic instead of the laptop mic: add --mic reachy.
-Use "Normal first" orientation (fast) because the label is held upright.
-
-New Python dependencies this session
-------------------------------------
-faster-whisper, sounddevice, kokoro-onnx, piper-tts (plus espeakng-loader,
-phonemizer-fork pulled in by kokoro). onnxruntime was already present. The
-unused "transformers" package (from the abandoned Cohere path) was uninstalled.
-
-Harmless startup noise to ignore
---------------------------------
-- "No Reachy Mini Audio USB device found!" (client mic-capture path; robot
-  playback via play_sound still works).
-- WebRTC "Signalling error: receiver is gone" printed on exit.
-- phonemizer "words count mismatch" warnings from Piper.
-
-Git / privacy
--------------
-- Branch: experiments. The voice assistant work is committed.
-- The laptop's real IP was removed from all files AND from git history; docs now
-  use the placeholder <LAPTOP_IP>. Everything is localhost in practice.
-
-Hackathon context (Build Small Hackathon, huggingface.co/build-small-hackathon)
--------------------------------------------------------------------------------
-- Submission deadline: 2026-06-15. Submit THREE things: a Gradio app hosted as a
-  Hugging Face Space under the "build-small-hackathon" org, a short demo video,
-  and a social post. App must be Gradio, total model params <= 32B.
-- IMPORTANT: the submission artifact is the MediLens DESKTOP Gradio app
-  (app.py), not the robot. The Reachy Mini voice assistant is a strong demo
-  asset for the video/post, not the submitted Space.
-- Good fit: "Backyard AI" track (real personal need - reading medicine labels
-  for a family member). Sponsor alignment: OpenBMB/MiniCPM ($10k prize) and
-  Cohere/Tiny Aya are both used. Bonus quests hit: llama.cpp runtime, offline
-  execution, custom UI.
-- OPEN QUESTIONS for the Gradio/HF Discord (not answered on the page):
-  (a) eligibility if not registered by the June 3 cutoff;
-  (b) how to get write access to the org / exact submit mechanics;
-  (c) whether the Space must run live for judges or a recorded demo is OK -
-      this matters because the local llama-servers (MiniCPM, Tiny Aya) will not
-      exist on a cloud Space without GPU hosting or an API.
+Open questions / risks
+----------------------
+- Hugging Face Spaces GPU allowance may be limited (user mentioned 40 minutes of
+  GPU over multiple usages).
+- If a Space does not have cached GGUF models or a GPU-capable llama.cpp build,
+  the local model startup path may not work live.
+- Consider using the recorded demo/video to show the full local/Reachy offline
+  workflow even if the public Space cannot host the full local model stack.
