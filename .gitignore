@@ -8,5 +8,7 @@ venv/
 env/
 local_models/
 *.gguf
+*.onnx
+robot/voices/
 .gradio/
 .claude/
