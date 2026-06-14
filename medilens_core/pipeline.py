@@ -4,7 +4,7 @@ import time
 import pandas as pd
 from PIL import Image
 
-from .config import DEFAULT_VISION_OCR_URL, OCR_MATCH_MIN_SCORE, ORIENTATION_NORMAL_FIRST, ROBOT_IMAGE_IDENTIFICATION_SECONDS
+from .config import DEFAULT_VISION_OCR_URL, OCR_MATCH_MIN_SCORE, ORIENTATION_FULL_AUTO, ROBOT_IMAGE_IDENTIFICATION_SECONDS
 from .database import load_medicines
 from .matching import apply_manual_match_safety, capitalize_name, find_best_match
 from .models import normalize_local_url
@@ -24,6 +24,7 @@ class MedicineIdentification:
     ocr_text: str = ""
     timed_out: bool = False
     message: str = ""
+    vision_attempts: int = 0
 
 
 def _display_medicine_name(match: dict) -> str:
@@ -44,7 +45,12 @@ def _polish_warning_text(text: str) -> str:
     return cleaned
 
 
-def _result_from_match(match: dict, ocr_text: str, timed_out: bool = False) -> MedicineIdentification:
+def _result_from_match(
+    match: dict,
+    ocr_text: str,
+    timed_out: bool = False,
+    vision_attempts: int = 0,
+) -> MedicineIdentification:
     row = match["row"]
     if row is None or match["confidence"] == "low":
         return MedicineIdentification(
@@ -54,6 +60,7 @@ def _result_from_match(match: dict, ocr_text: str, timed_out: bool = False) -> M
             ocr_text=ocr_text,
             timed_out=timed_out,
             message="I do not know what this medicine is. Try the MediLens app on your device.",
+            vision_attempts=vision_attempts,
         )
 
     return MedicineIdentification(
@@ -68,6 +75,7 @@ def _result_from_match(match: dict, ocr_text: str, timed_out: bool = False) -> M
         source_url=row.get("source_url", ""),
         ocr_text=ocr_text,
         timed_out=timed_out,
+        vision_attempts=vision_attempts,
     )
 
 
@@ -85,8 +93,9 @@ def identify_medicine_from_image(
     *,
     medicines: pd.DataFrame | None = None,
     vision_ocr_url: str = DEFAULT_VISION_OCR_URL,
-    orientation_mode: str = ORIENTATION_NORMAL_FIRST,
+    orientation_mode: str = ORIENTATION_FULL_AUTO,
     timeout_seconds: int = ROBOT_IMAGE_IDENTIFICATION_SECONDS,
+    max_vision_attempts_per_orientation: int = 2,
 ) -> MedicineIdentification:
     from .ocr import run_staged_vision_ocr
 
@@ -101,12 +110,13 @@ def identify_medicine_from_image(
         image = image.convert("RGB")
 
     try:
-        _selected_image, orientation_note, vision_text, vision_match, _attempts, timed_out = run_staged_vision_ocr(
+        selected_image, orientation_note, vision_text, vision_match, attempts, timed_out = run_staged_vision_ocr(
             image,
             vision_ocr_url,
             medicines,
             orientation_mode,
             deadline,
+            max_attempts_per_orientation=max_vision_attempts_per_orientation,
         )
     except Exception as error:
         return MedicineIdentification(
@@ -115,10 +125,41 @@ def identify_medicine_from_image(
             ocr_text=f"MiniCPM-V 4.6 failed: {error}",
         )
 
+    vision_attempts = len(attempts)
     ocr_text = "\n\n".join(part for part in [orientation_note, vision_text] if part)
+    if not ocr_text:
+        ocr_text = "MiniCPM-V 4.6 returned no readable text."
     if vision_match["score"] < OCR_MATCH_MIN_SCORE:
+        try:
+            from .ocr import choose_readable_image_orientation
+
+            fallback_image, tesseract_text, fallback_note = choose_readable_image_orientation(
+                image,
+                medicines,
+                orientation_mode,
+            )
+            selected_image = fallback_image
+            tesseract_match = find_best_match(tesseract_text, medicines)
+            if fallback_note:
+                ocr_text = f"{ocr_text}\n\n{fallback_note}"
+            if tesseract_text:
+                ocr_text = f"{ocr_text}\n\nTesseract OCR:\n{tesseract_text}"
+            if tesseract_match["score"] >= OCR_MATCH_MIN_SCORE:
+                return _result_from_match(
+                    tesseract_match,
+                    ocr_text,
+                    timed_out=timed_out,
+                    vision_attempts=vision_attempts,
+                )
+        except Exception as error:
+            ocr_text = f"{ocr_text}\n\nTesseract fallback failed: {error}"
         vision_match["confidence"] = "low"
-    return _result_from_match(vision_match, ocr_text, timed_out=timed_out)
+    return _result_from_match(
+        vision_match,
+        ocr_text,
+        timed_out=timed_out,
+        vision_attempts=vision_attempts,
+    )
 
 
 def spoken_response(result: MedicineIdentification) -> str:

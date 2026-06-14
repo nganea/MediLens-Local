@@ -9,6 +9,10 @@ from .messages import CONFIRM_MESSAGE, LOW_CONFIDENCE_MESSAGE
 from .models import start_llama_server
 
 
+class TinyAyaUnavailableError(RuntimeError):
+    """Raised when Tiny Aya is requested but cannot provide an answer."""
+
+
 def make_template_explanation(match: dict, language: str) -> str:
     if match["row"] is None or match["confidence"] == "low":
         return LOW_CONFIDENCE_MESSAGE[language]
@@ -114,14 +118,10 @@ def make_ai_explanation(match: dict, language: str, ocr_text: str, model_url: st
         answer = call_local_chat_model(model_url, prompt)
     except Exception as error:
         server_status = start_llama_server(TINY_AYA_MODEL_REF, model_url)
-        fallback = make_template_explanation(match, "English")
-        return (
-            f"Local Tiny Aya server was not reached, so this explanation is shown in English.\n\n"
-            f"{fallback}\n\n"
-            f"Background start attempt: {server_status}\n"
-            f"Check the URL: {model_url}\n"
-            f"Model error: {error}"
-        )
+        raise TinyAyaUnavailableError(
+            f"Local Tiny Aya server was not reached. Background start attempt: {server_status}. "
+            f"Check the URL: {model_url}. Model error: {error}"
+        ) from error
 
     cleaned_answer = clean_plain_language_explanation(apply_glossary(answer, language))
     return cleaned_answer or make_template_explanation(match, language)
@@ -203,12 +203,10 @@ Source warning:
         translated = call_local_chat_model(model_url, prompt, max_tokens=140)
     except Exception as error:
         server_status = start_llama_server(TINY_AYA_MODEL_REF, model_url)
-        return (
-            "Local Tiny Aya server was not reached, so this medicine-specific note is shown in English.\n\n"
-            f"{warning}\n\n"
-            f"Background start attempt: {server_status}\n"
+        raise TinyAyaUnavailableError(
+            f"Local Tiny Aya server was not reached. Background start attempt: {server_status}. "
             f"Model error: {error}"
-        )
+        ) from error
 
     return clean_translated_warning(apply_glossary(translated, language), language) or polish_warning_text(warning)
 
@@ -232,4 +230,3 @@ def english_robot_explanation(match: dict) -> str:
         return LOW_CONFIDENCE_MESSAGE["English"]
     row = match["row"]
     return f"It is used for {row['common_uses']}."
-

@@ -1,4 +1,4 @@
-/* ── Force light palette (backstop if .dark class is applied) ───── */
+﻿/* â”€â”€ Force light palette (backstop if .dark class is applied) â”€â”€â”€â”€â”€ */
 .dark {
     --body-background-fill: #f0f4f5;
     --background-fill-primary: #ffffff;
@@ -12,7 +12,7 @@
 }
 html { color-scheme: light; }
 
-/* ── Base ─────────────────────────────────────────── */
+/* â”€â”€ Base â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .gradio-container {
     background: #f0f4f5 !important;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
@@ -33,7 +33,7 @@ input[type="search"],
     border-color: #aeb7bd !important;
 }
 
-/* ── Brand header ─────────────────────────────────── */
+/* â”€â”€ Brand header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* Zero the HTML wrapper padding so the blue card spans the full content
    width, matching the accordion below it. */
 #brand-header-block {
@@ -70,7 +70,7 @@ input[type="search"],
     line-height: 1.5 !important;
 }
 
-/* ── Intro text (hide h1, style paragraph) ─────────── */
+/* â”€â”€ Intro text (hide h1, style paragraph) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #intro-text .prose h1,
 #intro-text h1 {
     display: none !important;
@@ -90,7 +90,7 @@ input[type="search"],
     line-height: 1.6 !important;
 }
 
-/* ── Top panels ───────────────────────────────────── */
+/* â”€â”€ Top panels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #top-left-panel,
 #top-right-panel {
     background: white !important;
@@ -101,7 +101,7 @@ input[type="search"],
     min-height: 480px;
 }
 
-/* ── Image upload ─────────────────────────────────── */
+/* â”€â”€ Image upload â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* Fixed-height image box so nothing shifts between empty and uploaded states */
 #medicine-image {
     height: 250px !important;
@@ -154,7 +154,7 @@ input[type="search"],
     object-fit: contain !important;
 }
 
-/* ── Match HTML card ──────────────────────────────── */
+/* â”€â”€ Match HTML card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #match-output {
     background: #e8f4fe;
     border: 1px solid #aed6f1;
@@ -195,7 +195,7 @@ input[type="search"],
 .confidence-medium { background: #fff3cd; color: #7a5000; border: 1px solid #ffe69c; }
 .confidence-low    { background: #f8d7da; color: #6b1a22; border: 1px solid #f1b0b7; }
 
-/* ── Explanation output (Medicine use) ────────────── */
+/* â”€â”€ Explanation output (Medicine use) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #explanation-output textarea {
     background: #eafaf0 !important;
     border-color: #b7e0c4 !important;
@@ -203,8 +203,8 @@ input[type="search"],
     border-left: 4px solid #007f3b !important;
     border-radius: 0 14px 14px 0 !important;
     font-size: 0.9rem !important;
-    margin: 0 -2px !important;
-    width: calc(100% + 4px) !important;
+    margin: 0 -4px !important;
+    width: calc(100% + 8px) !important;
     box-sizing: border-box !important;
 }
 /* Green label pill to match the Medicine use box */
@@ -215,7 +215,7 @@ input[type="search"],
     border-radius: 9999px !important;
 }
 
-/* ── Warning output ───────────────────────────────── */
+/* â”€â”€ Warning output â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #warning-output textarea {
     background: #fff9e6 !important;
     border-color: #ffb81c !important;
@@ -223,8 +223,8 @@ input[type="search"],
     border-left: 4px solid #ffb81c !important;
     border-radius: 0 14px 14px 0 !important;
     font-size: 0.9rem !important;
-    margin: 0 -2px !important;
-    width: calc(100% + 4px) !important;
+    margin: 0 -4px !important;
+    width: calc(100% + 8px) !important;
     box-sizing: border-box !important;
 }
 /* Amber label pill to match the Safety warning box */
@@ -235,7 +235,7 @@ input[type="search"],
     border-radius: 9999px !important;
 }
 
-/* ── Source URL (HTML) ────────────────────────────── */
+/* â”€â”€ Source URL (HTML) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* Reserve fixed space so the right panel does not resize when the link appears */
 #source-url-output {
     min-height: 64px;
@@ -244,11 +244,11 @@ input[type="search"],
     background: #f0f4f5;
     border: 1px solid #aeb7bd;
     border-radius: 12px;
-    padding: 10px 14px;
+    padding: 8px 10px;
     font-size: 0.9rem;
     color: #212b32;
-    margin: 0 -2px;
-    width: calc(100% + 4px);
+    margin: 0 -4px;
+    width: calc(100% + 8px);
     box-sizing: border-box;
 }
 .source-url-label {
@@ -268,17 +268,17 @@ input[type="search"],
 }
 .source-url-box a:hover { color: #003087; }
 
-/* ── OCR textbox (compact) ────────────────────────── */
+/* â”€â”€ OCR textbox (compact) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #ocr-output textarea {
-    height: 80px !important;
-    min-height: 80px !important;
-    max-height: 80px !important;
+    height: 132px !important;
+    min-height: 132px !important;
+    max-height: 132px !important;
     overflow-y: auto !important;
     background: #ffffff !important;
     color: #212b32 !important;
 }
 
-/* ── Read button (NHS green) ──────────────────────── */
+/* â”€â”€ Read button (NHS green) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #read-btn button {
     background: #007f3b !important;
     border-radius: 9999px !important;
@@ -301,14 +301,14 @@ input[type="search"],
     box-shadow: 0 1px 2px rgba(0, 64, 29, 0.30) !important;
 }
 
-/* ── Language selector ────────────────────────────── */
+/* â”€â”€ Language selector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #language-selector {
     border: 2px solid #aeb7bd !important;
     border-radius: 12px !important;
     background: white !important;
 }
 
-/* ── Manual label callout ─────────────────────────── */
+/* â”€â”€ Manual label callout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* No default group chrome (avoids a stray grey bar under the field) */
 #manual-label-section {
     background: transparent !important;
@@ -337,7 +337,7 @@ input[type="search"],
     box-shadow: 0 0 0 2px rgba(255, 184, 28, 0.3) !important;
 }
 
-/* ── Model note text ──────────────────────────────── */
+/* â”€â”€ Model note text â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #model-note {
     background: #eef6fd !important;
     border-left: 4px solid #aed6f1 !important;
@@ -351,7 +351,7 @@ input[type="search"],
     line-height: 1.6 !important;
 }
 
-/* ── Glossary note ────────────────────────────────── */
+/* â”€â”€ Glossary note â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #glossary-note {
     border-left: 4px solid #005eb8;
     padding: 8px 12px;
@@ -361,7 +361,7 @@ input[type="search"],
 }
 #glossary-note p { color: #212b32 !important; }
 
-/* ── Progress ─────────────────────────────────────── */
+/* â”€â”€ Progress â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 /* Fixed height so the left panel never grows when "Processing image..." appears */
 #processing-progress {
     height: 20px !important;
@@ -381,13 +381,36 @@ input[type="search"],
     color: #425563;
 }
 
-/* ── Technical panels ─────────────────────────────── */
+/* â”€â”€ Technical panels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #technical-left-panel,
 #technical-right-panel {
-    min-height: 200px;
+    min-height: 485px;
+    height: 100%;
+    box-sizing: border-box;
+}
+#server-status-output textarea {
+    min-height: 58px !important;
+    height: 58px !important;
+}
+#use-vision-ocr-checkbox {
+    margin-bottom: -8px !important;
+}
+#start-servers-btn button {
+    min-height: 48px !important;
+    height: 48px !important;
+    border-radius: 9999px !important;
+    background: #d8e8f6 !important;
+    border: 1px solid #8ab8df !important;
+    color: #003087 !important;
+    font-weight: 700 !important;
+    box-shadow: 0 1px 2px rgba(0, 48, 135, 0.16), 0 2px 6px rgba(0, 94, 184, 0.12) !important;
+}
+#start-servers-btn button:hover {
+    background: #c7ddf1 !important;
+    border-color: #6da6d6 !important;
 }
 
-/* ── Phone optimization ───────────────────────────── */
+/* â”€â”€ Phone optimization â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 @media (max-width: 600px) {
     #medilens-header {
         border-radius: 16px;

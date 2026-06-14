@@ -130,25 +130,89 @@ http://127.0.0.1:7860
 
 The reusable medicine logic now lives in `medilens_core`, so Reachy Mini does not need to run the Gradio web UI. The recommended hackathon setup is:
 
-- Run MiniCPM-V 4.6 on the desktop or laptop at `http://127.0.0.1:8081/v1/chat/completions`, or expose that address on the same local network for Reachy.
+- Run MiniCPM-V 4.6 on the desktop or laptop at `http://127.0.0.1:8081/v1/chat/completions`.
+- Run the MediLens robot service on the desktop or laptop so Reachy can call it over Wi-Fi.
 - Let Reachy Mini handle the cue phrase, camera capture, speech, and thinking head movement.
-- Call `medilens_core.pipeline.identify_medicine_from_image(...)` with a 90-second timeout.
+- Let the service call `medilens_core.pipeline.identify_medicine_from_image(...)` with a 90-second timeout.
+- Use `Full auto` image orientation by default, so the robot path tries normal, mirrored, upside-down, and flipped label candidates.
+- Retry MiniCPM-V 4.6 once for a candidate orientation only when the first result is empty or weak.
 - Speak only the English result from the local medicine database.
 
-The scaffold is in:
+The desktop service is in:
+
+```bash
+robot/medilens_robot_service.py
+```
+
+The Reachy-side scaffold is in:
 
 ```bash
 robot/reachy_mini_app.py
 ```
 
-You can test the robot flow with an image file before wiring the real Reachy SDK:
+### Desktop/Laptop Setup
+
+Start MiniCPM-V 4.6:
 
 ```bash
-python robot/reachy_mini_app.py path/to/medicine-label.jpg --timeout 90
+llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
+```
+
+In another terminal, start the MediLens robot service:
+
+```bash
+python robot/medilens_robot_service.py --host 0.0.0.0 --port 8765
+```
+
+Find your laptop's local network IP address.
+
+PowerShell:
+
+```powershell
+ipconfig
+```
+
+Look for the IPv4 address on the Wi-Fi adapter, for example:
+
+```text
+192.168.1.25
+```
+
+You can test the service from the same laptop:
+
+```text
+http://127.0.0.1:8765/health
+```
+
+### Reachy Mini Setup
+
+You do not need to start Reachy Mini until the desktop service is running. When you are ready for hardware testing:
+
+- Put Reachy Mini and the laptop/desktop on the same Wi-Fi network.
+- Make sure the laptop firewall allows inbound connections on port `8765`.
+- Point Reachy at the laptop service URL, for example `http://192.168.1.25:8765`.
+
+You can test the Reachy-side flow with an image file before wiring the real Reachy SDK:
+
+```bash
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://192.168.1.25:8765 --timeout 90
+```
+
+The Reachy-side test command uses `Full auto` image orientation by default. You can override it for faster tests:
+
+```bash
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://192.168.1.25:8765 --orientation-mode "Normal first" --timeout 90
+```
+
+The default MiniCPM-V 4.6 retry setting is `2` attempts per orientation, but the second attempt is only used when the first attempt does not produce a useful medicine match. To make a faster single-pass test:
+
+```bash
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://192.168.1.25:8765 --max-vision-attempts 1 --timeout 90
 ```
 
 Replace the methods on `ReachyMiniHooks` with the actual Reachy Mini SDK calls for:
 
+- cue phrase / ASR command handling
 - `speak`
 - `capture_image`
 - `start_thinking_motion`

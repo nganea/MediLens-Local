@@ -28,7 +28,7 @@ from medilens_core.config import (
     normalize_image_timeout_seconds,
 )
 from medilens_core.database import load_glossary_suggestions, load_medicines, submit_glossary_suggestion
-from medilens_core.explanations import make_explanation, translate_medicine_warning
+from medilens_core.explanations import TinyAyaUnavailableError, make_explanation, translate_medicine_warning
 from medilens_core.matching import apply_manual_match_safety, capitalize_name, clean_text, find_best_match
 from medilens_core.messages import GENERAL_SAFETY_WARNING, manual_entry_prompt, no_database_info_message
 from medilens_core.models import (
@@ -267,55 +267,60 @@ def run_staged_vision_ocr_with_progress(
     orientation_mode: str,
     deadline: float,
     total_seconds: int,
+    max_attempts_per_orientation: int = 2,
 ):
     attempts = []
     empty_match = {"score": 0, "matched_name": "", "row": None, "confidence": "low"}
 
     for note, candidate_image in readable_image_candidates(image, orientation_mode):
-        remaining_seconds = deadline - time.monotonic()
-        if remaining_seconds <= 0:
+        for _attempt_index in range(max(1, int(max_attempts_per_orientation))):
+            remaining_seconds = deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                break
+
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(
+                run_vision_ocr,
+                candidate_image,
+                vision_ocr_url,
+                max(1.0, remaining_seconds),
+            )
+
+            try:
+                while True:
+                    try:
+                        vision_text = future.result(timeout=0.5)
+                        break
+                    except concurrent.futures.TimeoutError:
+                        elapsed_seconds = total_seconds - max(0, deadline - time.monotonic())
+                        if elapsed_seconds >= 5:
+                            yield pending_read_response(
+                                progress_bar_html(
+                                    elapsed_seconds,
+                                    total_seconds,
+                                    "Reading image...",
+                                )
+                            )
+                        if time.monotonic() >= deadline:
+                            future.cancel()
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            if attempts:
+                                _score, best_note, best_image, best_text, best_match = max(
+                                    attempts,
+                                    key=lambda attempt: attempt[0],
+                                )
+                                return best_image, best_note, best_text, best_match, attempts, True
+                            return image, "", "", empty_match, attempts, True
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
+
+            vision_match = find_best_match(vision_text, medicines)
+            attempts.append((vision_match["score"], note, candidate_image, vision_text, vision_match))
+            if vision_match["score"] >= OCR_MATCH_MIN_SCORE:
+                return candidate_image, note, vision_text, vision_match, attempts, False
+
+        if time.monotonic() >= deadline:
             break
-
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(
-            run_vision_ocr,
-            candidate_image,
-            vision_ocr_url,
-            max(1.0, remaining_seconds),
-        )
-
-        try:
-            while True:
-                try:
-                    vision_text = future.result(timeout=0.5)
-                    break
-                except concurrent.futures.TimeoutError:
-                    elapsed_seconds = total_seconds - max(0, deadline - time.monotonic())
-                    if elapsed_seconds >= 5:
-                        yield pending_read_response(
-                            progress_bar_html(
-                                elapsed_seconds,
-                                total_seconds,
-                                "Reading image...",
-                            )
-                        )
-                    if time.monotonic() >= deadline:
-                        future.cancel()
-                        executor.shutdown(wait=False, cancel_futures=True)
-                        if attempts:
-                            _score, best_note, best_image, best_text, best_match = max(
-                                attempts,
-                                key=lambda attempt: attempt[0],
-                            )
-                            return best_image, best_note, best_text, best_match, attempts, True
-                        return image, "", "", empty_match, attempts, True
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
-
-        vision_match = find_best_match(vision_text, medicines)
-        attempts.append((vision_match["score"], note, candidate_image, vision_text, vision_match))
-        if vision_match["score"] >= OCR_MATCH_MIN_SCORE:
-            return candidate_image, note, vision_text, vision_match, attempts, False
 
     if not attempts:
         return image, "", "", empty_match, attempts, True
@@ -356,7 +361,7 @@ def likely_match_text(match: dict) -> str:
         display_name = f"{capitalize_name(matched_name)} / {capitalize_name(generic_name)}"
 
     badge_class = f"confidence-{confidence}"
-    badge_label = f"{confidence.capitalize()} confidence Â· {score}/100"
+    badge_label = f"{confidence.capitalize()} confidence &middot; {score}/100"
     return (
         f'<div class="match-card">'
         f'<p class="match-medicine-name">{display_name}</p>'
@@ -368,6 +373,22 @@ def likely_match_text(match: dict) -> str:
 def match_not_found_html(language: str) -> str:
     message = manual_entry_prompt(language).split("\n", 1)[-1]
     return f'<p class="match-na">{message}</p>'
+
+
+def tiny_aya_unavailable_message(language: str) -> str:
+    messages = {
+        "English": "MediLens is not working. Check AI model status.",
+        "French": "MediLens ne fonctionne pas. Verifiez l'etat du modele d'IA.",
+        "German": "MediLens funktioniert nicht. Pruefen Sie den Status des KI-Modells.",
+        "Italian": "MediLens non funziona. Controlla lo stato del modello IA.",
+        "Romanian": "MediLens nu functioneaza. Verifica starea modelului AI.",
+        "Spanish": "MediLens no funciona. Compruebe el estado del modelo de IA.",
+    }
+    return messages.get(language, messages["English"])
+
+
+def tiny_aya_unavailable_html(language: str) -> str:
+    return f'<p class="match-na">{tiny_aya_unavailable_message(language)}</p>'
 
 
 def manual_label_help_update(language: str, visible: bool = True):
@@ -540,6 +561,7 @@ def read_label(
     use_vision_ocr: bool,
     vision_ocr_url: str,
     orientation_mode: str,
+    max_attempts_per_orientation,
     image_timeout_seconds,
     use_ai_model: bool,
     model_url: str,
@@ -588,6 +610,7 @@ def read_label(
                 orientation_mode,
                 image_deadline,
                 image_timeout_seconds,
+                max_attempts_per_orientation,
             )
             ocr_parts = []
             if orientation_note:
@@ -609,7 +632,7 @@ def read_label(
                     ocr_text,
                     match_not_found_html(language),
                     "",
-                    "N/A",
+                    "",
                     "",
                     show_manual_label_help(language),
                     "",
@@ -665,7 +688,7 @@ def read_label(
                         message,
                         match_not_found_html(language),
                         "",
-                        "N/A",
+                        "",
                         "",
                         show_manual_label_help(language),
                         "",
@@ -725,7 +748,7 @@ def read_label(
             ocr_text,
             match_not_found_html(language),
             "",
-            "N/A",
+            "",
             "",
             show_manual_label_help(language),
             "",
@@ -753,17 +776,58 @@ def read_label(
         source_url = ""
     else:
         likely = likely_match_text(match)
-        common_uses = make_explanation(match, language, ocr_text, use_ai_model, model_url)
+        if use_ai_model and not is_port_reachable(model_url):
+            yield complete_read_response(
+                ocr_text,
+                tiny_aya_unavailable_html(language),
+                "",
+                "",
+                "",
+                hide_manual_label_help(),
+                match_text,
+                server_status_output,
+                manual_label_optional_placeholder(language),
+            )
+            return
+        try:
+            common_uses = make_explanation(match, language, ocr_text, use_ai_model, model_url)
+        except TinyAyaUnavailableError:
+            yield complete_read_response(
+                ocr_text,
+                tiny_aya_unavailable_html(language),
+                "",
+                "",
+                "",
+                hide_manual_label_help(),
+                match_text,
+                server_status_output,
+                manual_label_optional_placeholder(language),
+            )
+            return
         medicine_warning = match["row"]["safety_warning"]
         source_url = match["row"].get("source_url", "")
         manual_help = hide_manual_label_help()
         manual_label_update = manual_label_optional_placeholder(language)
 
     if medicine_warning:
-        translated_warning = translate_medicine_warning(medicine_warning, language, use_ai_model, model_url)
+        try:
+            translated_warning = translate_medicine_warning(medicine_warning, language, use_ai_model, model_url)
+        except TinyAyaUnavailableError:
+            yield complete_read_response(
+                ocr_text,
+                tiny_aya_unavailable_html(language),
+                "",
+                "",
+                "",
+                hide_manual_label_help(),
+                match_text,
+                server_status_output,
+                manual_label_optional_placeholder(language),
+            )
+            return
         safety_warning = translated_warning
     else:
-        safety_warning = GENERAL_SAFETY_WARNING[language]
+        safety_warning = "" if match["confidence"] == "low" else GENERAL_SAFETY_WARNING[language]
 
     if read_version != current_response_version():
         yield stale_read_response()
@@ -920,17 +984,35 @@ with gr.Blocks(
                     value=ORIENTATION_NORMAL_FIRST,
                     label="Image orientation mode",
                 )
-                ocr_output = gr.Textbox(label="Extracted OCR text", lines=3, elem_id="ocr-output")
+                max_attempts_input = gr.Number(
+                    value=2,
+                    minimum=1,
+                    maximum=2,
+                    precision=0,
+                    label="Max attempts per image orientation",
+                )
+                ocr_output = gr.Textbox(label="Extracted OCR text", lines=4, elem_id="ocr-output")
             with gr.Column(scale=1, elem_id="technical-right-panel"):
                 use_vision_ocr_input = gr.Checkbox(
                     value=True,
                     label="Use local MiniCPM-V 4.6 model with Tesseract (reads image)",
+                    elem_id="use-vision-ocr-checkbox",
                 )
                 use_ai_model_input = gr.Checkbox(
                     value=True,
                     label="Use local Tiny Aya Global model (explains and translates)",
+                    elem_id="use-ai-model-checkbox",
                 )
-                with gr.Accordion("Model server URLs (advanced)", open=False):
+                server_status_output = gr.Textbox(
+                    label="Local model server status",
+                    lines=2,
+                    elem_id="server-status-output",
+                )
+                start_servers_button = gr.Button(
+                    "Start/check local model servers",
+                    elem_id="start-servers-btn",
+                )
+                with gr.Accordion("Model server URLs (advanced)", open=True, elem_id="model-server-urls"):
                     vision_ocr_url_input = gr.Textbox(
                         value=DEFAULT_VISION_OCR_URL,
                         label="Local MiniCPM-V 4.6 server URL",
@@ -941,8 +1023,6 @@ with gr.Blocks(
                         label="Local Tiny Aya server URL",
                         placeholder="http://127.0.0.1:8080/v1/chat/completions",
                     )
-                server_status_output = gr.Textbox(label="Local model server status", lines=2)
-                start_servers_button = gr.Button("Start/check local model servers")
 
     demo.load(
         fn=apply_browser_language,
@@ -1089,6 +1169,7 @@ with gr.Blocks(
             use_vision_ocr_input,
             vision_ocr_url_input,
             orientation_mode_input,
+            max_attempts_input,
             image_timeout_input,
             use_ai_model_input,
             model_url_input,

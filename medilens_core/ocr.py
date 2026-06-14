@@ -179,17 +179,23 @@ def run_staged_vision_ocr(
     medicines: pd.DataFrame,
     orientation_mode: str,
     deadline: float,
+    max_attempts_per_orientation: int = 1,
 ):
     attempts = []
     for note, candidate_image in readable_image_candidates(image, orientation_mode):
-        remaining_seconds = deadline - time.monotonic()
-        if remaining_seconds <= 0:
+        for attempt_index in range(max(1, int(max_attempts_per_orientation))):
+            remaining_seconds = deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                break
+            vision_text = run_vision_ocr(candidate_image, vision_ocr_url, timeout=max(1.0, remaining_seconds))
+            vision_match = find_best_match(vision_text, medicines)
+            attempts.append((vision_match["score"], note, candidate_image, vision_text, vision_match))
+            if vision_match["score"] >= OCR_MATCH_MIN_SCORE:
+                return candidate_image, note, vision_text, vision_match, attempts, False
+            if vision_text.strip() and attempt_index == 0:
+                break
+        if time.monotonic() >= deadline:
             break
-        vision_text = run_vision_ocr(candidate_image, vision_ocr_url, timeout=max(1.0, remaining_seconds))
-        vision_match = find_best_match(vision_text, medicines)
-        attempts.append((vision_match["score"], note, candidate_image, vision_text, vision_match))
-        if vision_match["score"] >= OCR_MATCH_MIN_SCORE:
-            return candidate_image, note, vision_text, vision_match, attempts, False
 
     if not attempts:
         empty_match = {"score": 0, "matched_name": "", "row": None, "confidence": "low"}
