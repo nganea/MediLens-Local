@@ -1,82 +1,185 @@
-MediLens Local: Current App Status
-==================================
+MediLens Local: App Status Summary For New Codex Chat
+=====================================================
 
-Project folder:
+Current project folder
+----------------------
 C:\Users\n_k_r\Documents\Codex\MediLens
 
-Main app file:
-app.py
+Start the app from Git Bash:
 
-Active medicine database:
-medicines.csv
-
-Current purpose
----------------
-MediLens Local is a local-first Gradio app for reading medicine labels from an uploaded or captured image. It extracts label text, matches the medicine against a local CSV database, and shows a simple medicine use explanation, safety warning, and source URL.
-
-The app is intentionally local. It does not use cloud APIs.
-
-Core technologies
------------------
-- Gradio for the web app interface.
-- Pillow for image handling.
-- pytesseract/Tesseract for local OCR support.
-- rapidfuzz for fuzzy matching OCR text against medicine names and brand names.
-- pandas for reading and writing CSV files.
-- llama.cpp local servers for optional local AI models.
-
-Local AI models
----------------
-The app is designed to use two local llama.cpp model servers:
-
-1. Tiny Aya Global
-   - Used for rewriting/translating medicine use and safety text.
-   - Default URL: http://127.0.0.1:8080/v1/chat/completions
-   - Model ref: CohereLabs/tiny-aya-global-GGUF:Q4_K_M
-
-2. MiniCPM-V 4.6
-   - Used for local vision OCR from medicine label images.
-   - Default URL: http://127.0.0.1:8081/v1/chat/completions
-   - Model ref: openbmb/MiniCPM-V-4.6-gguf:Q4_K_M
-
-MiniCPM-V OCR and Tesseract are intended to work together by default. If MiniCPM-V is not reachable, the app can show Tesseract OCR text for debugging, but it should not trust Tesseract-only OCR for medicine matching because it can produce wrong medicine names.
-
-How to start the app
---------------------
-Use three Git Bash windows and keep them open.
-
-Window 1: start Tiny Aya
-llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080
-
-Window 2: start MiniCPM-V
-llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
-
-Window 3: start Gradio app
 cd ~/Documents/Codex/MediLens
 py app.py
 
-Then open:
+Open the app at:
 http://127.0.0.1:7860
+
+Repository status
+-----------------
+This folder is a Git repository.
+
+Branches:
+- main: stable cleaned version
+- experiments: current branch for trying changes safely
+
+The current working branch is usually intended to be `experiments`.
+
+Core app
+--------
+The app is called MediLens Local: Medicine Label Helper.
+
+It is a local-first Gradio web app that helps read medicine labels from an uploaded or captured image. It extracts text from the image, matches the label against a local medicine database, and displays:
+
+- Medicine match
+- Medicine use
+- Safety warning
+- Source URL
+- Extracted OCR text in Technical details
+
+The app does not use cloud APIs.
+
+Important files
+---------------
+app.py
+- Main Gradio app.
+
+medicines.csv
+- Active local medicine database used by the app.
+- Contains about 200 commonly used medicines.
+- Includes medicine names, brand names, common uses, safety warnings, source names, source URLs, review status, and notes.
+
+translation_glossary.csv
+- Reviewed translation glossary used to improve Tiny Aya phrasing.
+
+translation_glossary_suggestions.csv
+- Public translation suggestions submitted through the app.
+- Newest suggestions are shown at the top in the app.
+- Suggestions need human review before being copied into the active glossary.
+
+medicine_semantic_consistency_report.csv
+- Latest consistency report comparing database content with source URLs.
+
+requirements.txt
+- Python dependencies.
+
+README.md
+- Setup and running instructions.
+
+scripts/check_semantic_consistency.py
+- The only helper script currently kept in the scripts folder.
+- Uses medicines.csv by default.
+- Writes medicine_semantic_consistency_report.csv.
+
+Scripts folder cleanup
+----------------------
+The scripts folder was simplified. Older one-time database-building scripts were removed. The only remaining script is:
+
+scripts/check_semantic_consistency.py
+
+This script checks whether the common_uses and safety_warning columns semantically overlap with the medicine source URLs.
+
+Local models
+------------
+The app is designed to use two local llama.cpp servers.
+
+Tiny Aya Global:
+- Purpose: rewrite/translate medicine explanations and safety wording.
+- Default URL: http://127.0.0.1:8080/v1/chat/completions
+- Model ref: CohereLabs/tiny-aya-global-GGUF:Q4_K_M
+
+MiniCPM-V 4.6:
+- Purpose: vision OCR for medicine label images.
+- Default URL: http://127.0.0.1:8081/v1/chat/completions
+- Model ref: openbmb/MiniCPM-V-4.6-gguf:Q4_K_M
+
+Recommended startup
+-------------------
+Use three Git Bash windows.
+
+Window 1: Tiny Aya
+llama-server -hf CohereLabs/tiny-aya-global-GGUF:Q4_K_M --port 8080
+
+Window 2: MiniCPM-V
+llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
+
+Window 3: Gradio app
+cd ~/Documents/Codex/MediLens
+py app.py
 
 Main user workflow
 ------------------
-1. User uploads or captures a medicine label image.
-2. User can optionally type the medicine name or label text.
-3. User selects the language.
-4. User clicks Read medicine label.
-5. The app checks local model server status at the start of the image processing attempt.
-6. The app reads the image with MiniCPM-V OCR plus Tesseract.
-7. The app fuzzy-matches the OCR/manual text against medicines.csv.
-8. The app displays:
-   - Medicine match
-   - Medicine use
-   - Safety warning
-   - Source URL from the medicine database
-   - Extracted OCR text in Technical details
+1. Upload or capture a medicine label image.
+2. Optionally type the medicine name or label text.
+3. Select the language.
+4. Click Read medicine label.
+5. The app checks local model server status.
+6. MiniCPM-V and Tesseract work together to read the image.
+7. The app matches the OCR/manual text against medicines.csv.
+8. Tiny Aya optionally rewrites/translates the output.
+9. The app displays medicine match, medicine use, safety warning, source URL, and OCR details.
 
-Language support
-----------------
-The supported languages are:
+OCR behavior
+------------
+MiniCPM-V OCR and Tesseract are enabled together by default.
+
+Tesseract is useful for debugging and fallback text, but if MiniCPM-V cannot be reached or cannot read the image, the app should not trust Tesseract-only OCR for matching because it can produce incorrect medicine names.
+
+If MiniCPM-V times out:
+- The webpage stays open.
+- The app tries to stop waiting for the model result.
+- Medicine match shows N/A.
+- Medicine use asks the user to type the medicine name or label text and search again.
+- Safety warning shows N/A.
+- The manual label field is highlighted.
+
+Processing status
+-----------------
+When the user clicks Read medicine label, the status text appears immediately under the button.
+
+It uses the timeout value entered by the user, for example:
+
+Processing image... 0/60s
+Processing image... 18/60s
+
+The app no longer reloads the webpage at the timeout.
+
+Image and layout notes
+----------------------
+Current main layout:
+
+Left panel:
+- Medicine image upload/capture
+- Type medicine label
+- Language
+- Read medicine label button
+- Processing image status text
+
+Right panel:
+- Medicine match
+- Medicine use
+- Safety warning
+- Source URL
+
+Below:
+- Model/database note
+- Improve translation section
+- Technical details section
+
+The image field was shortened to 280px height to reserve space for processing text without making the left panel taller than the right panel.
+
+The helper sentence under the image was hidden:
+"Upload an image, or use the camera option to capture a new photo."
+
+Orientation behavior
+--------------------
+Default image orientation mode on page load is Normal first.
+
+Uploaded images use Normal first.
+
+Full auto should only be selected for desktop webcam capture.
+
+Language behavior
+-----------------
+Supported languages:
 - English
 - French
 - German
@@ -84,132 +187,82 @@ The supported languages are:
 - Romanian
 - Spanish
 
-The language dropdown is displayed alphabetically.
+The language dropdown is alphabetized.
 
-The app can use the browser's language setting to select the starting language while staying local. It does not use geographic location.
+The app can choose the initial language from the browser language setting, while staying local.
 
-When the language changes, the app updates field labels and page text. If a response had already been loaded, result fields are cleared and the user must press Read medicine label again. This avoids flickering and avoids showing old-language output after a language change.
+When the language changes:
+- Field labels and page text update.
+- Existing result fields are cleared.
+- The user must click Read medicine label again.
 
-Current layout
---------------
-Top left panel:
-- Medicine image upload/capture
-- Type medicine label field
-- Language dropdown
-- Read medicine label button
+This avoids flickering and avoids showing output in the old language after a language change.
 
-Top right panel:
-- Medicine match
-- Medicine use
-- Safety warning
-- Source URL
-
-Below the main panels:
-- Short model/database note
-- Improve translation section
-- Technical details section
-
-Technical details section:
-- Checkboxes for using MiniCPM-V OCR with Tesseract and Tiny Aya
-- Local model server status
-- Start/check local model servers button
-- Local server URL fields
-- Extracted OCR text
-
-Medicine database
------------------
-The active database is medicines.csv. It contains about 200 commonly used medicines across UK and USA usage patterns. It was curated locally from NHS Medicines A to Z and British National Formulary Drugs A to Z source pages.
-
-Important columns include:
-- generic_name
-- brand_names
-- common_uses
-- safety_warning
-- source_name
-- source_url
-- last_checked
-- review_status
-- notes
-
-The app displays source_url for the matched medicine so the user can see where the database information came from.
-
-The latest consistency report kept in the folder is:
-medicine_semantic_consistency_report.csv
-
-Translation glossary
+Translation behavior
 --------------------
-The app has two glossary-related files:
+Tiny Aya is used to make the medicine use and safety warning easier to read and to translate them.
 
-translation_glossary.csv
-- Active reviewed translation glossary.
-- Used to improve or correct phrasing after Tiny Aya output.
+Desired explanation style:
+- Like writing for a 14-15 year old.
+- Maximum 3 short sentences.
+- Non-repeating.
+- No dosage instructions.
+- Avoid unnecessary medicine form details such as tablets, creams, drops, or capsules unless clinically necessary.
 
-translation_glossary_suggestions.csv
-- Public suggestions submitted from the app.
-- Newest suggestions are shown at the top.
-- Suggestions include language, bad phrase, preferred phrase, and timestamp.
-- Suggestions need human review before being added to the active glossary.
+Safety warning style:
+- Avoid repeating generic and medicine-specific warnings.
+- Use "patient information leaflet" rather than "patient leaflet".
+- Do not tell the user that the medicine is safe for them personally.
 
-The Improve translation section explains that Tiny Aya is useful for translation but not perfect. Users can suggest better phrasing by entering:
-- language
-- phrase that sounds wrong
-- preferred phrase
+Improve translation section
+---------------------------
+The app has an "Improve translation" section above Technical details.
 
-Current safety/content behavior
--------------------------------
-The app should not give dosage instructions or tell someone a medicine is safe for them personally.
+It explains that Tiny Aya is useful for translation but not perfect.
 
-The plain-language medicine use explanation should be written for a 14-15 year old, should be non-repeating, and should usually be no more than 3 short sentences.
+Users can submit public glossary suggestions with:
+- Language
+- Bad phrase
+- Preferred phrase
 
-The safety warning should avoid repeating the same generic warning and medicine-specific note. The phrase should say "patient information leaflet" rather than "patient leaflet".
+The public suggestions table loads when the app opens and updates immediately after a new suggestion is submitted. Suggestions are not automatically applied to the active glossary; they need human review first.
 
-If MiniCPM-V cannot be reached and the image cannot be processed reliably:
-- Medicine match should show N/A.
-- Medicine use should say something like: "N/A. Could not process image. Type the medicine name or label text, then search again."
-- Safety warning should show N/A.
-- The manual label field should be highlighted so the user knows where to type.
+Known Romanian glossary example:
+- Bad phrase: ochi lacrimogeni
+- Preferred phrase: ochi inlacrimati
 
-If a typed medicine/manual label is not found in the database:
-- The app should say that no information is available for that medicine in the database.
+Safety position
+---------------
+The app is informational only.
 
-Important behavior decisions already made
+It should not:
+- Provide dosage instructions.
+- Tell a user to take a medicine.
+- Confirm that a medicine is safe for a specific person.
+- Replace a pharmacist, doctor, or other qualified healthcare professional.
+
+It should:
+- Explain common medicine uses.
+- Show source URL.
+- Encourage checking with a pharmacist or doctor if unsure.
+- Use N/A when the app cannot reliably identify or process the medicine.
+
+Current source/database note shown in app
 -----------------------------------------
-- The app should stay local and should not use cloud APIs.
-- MiniCPM-V and Tiny Aya should be checked by default.
-- MiniCPM-V OCR should always be used with Tesseract by default.
-- Model status should be checked at the beginning of each image upload/capture processing attempt.
-- If local model servers are not reachable, the app can try to start llama-server in the background.
-- Changing language after reading a label should clear result fields rather than re-running OCR or translating automatically.
-- The Read medicine label button should be disabled while a response is loading and active again when the app is ready.
-- If language/image/manual text changes while a model response is loading, the stale response should be ignored.
+The app tells users it uses:
+- MiniCPM for reading image text.
+- Tiny Aya Global for generating text.
+- A curated local database of 200 commonly used medicines in the UK and USA.
+- Information from NHS Medicines A to Z and British National Formulary Drugs A to Z.
+- OpenAI Codex was used to develop the app.
 
-Current known practical notes
------------------------------
-- The README contains Git Bash startup instructions, but the user found this confusing before, so future work should keep setup instructions very explicit.
-- llama-server may not be found immediately after installing llama.cpp until Git Bash or Windows is restarted.
-- Tiny Aya can sometimes add extra wording or slightly change explanations between runs. This is expected from generative models unless prompts/settings are made more deterministic.
-- Translation quality is imperfect, especially for Romanian phrasing, so the glossary exists to fix recurring wording issues.
-- Example Romanian glossary issue: "ochi lacrimogeni" should be "ochi inlacrimati".
-
-Files to keep in mind
----------------------
-app.py
-- Main Gradio app and all UI/model/matching logic.
-
-medicines.csv
-- Active medicine database used by the app.
-
-translation_glossary.csv
-- Reviewed translation glossary.
-
-translation_glossary_suggestions.csv
-- Public suggestions submitted from the app.
-
-medicine_semantic_consistency_report.csv
-- Latest report comparing database text with source URLs.
-
-requirements.txt
-- Python dependencies.
-
-README.md
-- Setup and usage instructions.
+Important recent changes
+------------------------
+- Repository copied to C:\Users\n_k_r\Documents\Codex\MediLens.
+- README paths updated to cd ~/Documents/Codex/MediLens.
+- scripts folder simplified to one consistency-check script.
+- Image height shortened to 280px.
+- Processing text moved closer to the Read button.
+- Browser timeout reload removed.
+- MiniCPM timeout now keeps the page open and returns an N/A/manual-entry prompt.
+- Page load orientation now starts as Normal first.
