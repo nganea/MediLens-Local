@@ -9,3 +9,4 @@ env/
 local_models/
 *.gguf
 .gradio/
+.claude/
