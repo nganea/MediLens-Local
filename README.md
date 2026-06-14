@@ -4,6 +4,8 @@ MediLens Local is a small local-first Gradio app that reads a medicine label ima
 
 It does not use cloud APIs and does not replace a pharmacist, doctor, or other qualified healthcare professional.
 
+This app was developed with the help of OpenAI Codex and Claude.
+
 ## Features
 
 - Upload or capture a medicine label image.
@@ -147,7 +149,7 @@ The app tries to set this automatically:
 - phone or tablet: `Normal first`
 - desktop or laptop: `Full auto`
 
-The app checks local model server status when you upload/capture an image or click read. It does not constantly check server status in the background. If reading takes a long time, it is usually because MiniCPM is processing one or more image orientations. In **Technical details**, **Max image wait time, seconds** lets the user choose a two-digit wait time from 10 to 99 seconds. The default is 60 seconds. If MiniCPM cannot identify the image with high confidence within that time, the app stops and asks the user to type the medicine name or label text instead.
+The app checks local model server status when you upload/capture an image or click read. It does not constantly check server status in the background. If reading takes a long time, it is usually because MiniCPM is processing one or more image orientations. In **Technical details**, **Max image processing time, seconds** lets the user choose a two-digit wait time from 10 to 99 seconds. The default is 60 seconds. If MiniCPM cannot identify the image with high confidence within that time, the app stops and asks the user to type the medicine name or label text instead.
 
 During MiniCPM image reading, the app shows small status text under the **Read medicine label** button if reading takes more than 5 seconds. The reserved status area stays in place when processing finishes, so the fields do not shift.
 

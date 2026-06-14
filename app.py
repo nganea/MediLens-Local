@@ -275,17 +275,17 @@ CONFIRM_MESSAGE = {
 UI_LABELS = {
     "English": {
         "intro": "Upload a photo of a medicine label. This tool tries to read the label and explain what the medicine is commonly used for. It does not replace a pharmacist or doctor.",
-        "image_label": "Photo of medicine label",
+        "image_label": "Photo",
         "image_help": "Upload an image, or use the camera option to capture a new photo.",
         "manual_label": "Medicine name",
         "manual_placeholder": "Optional: type medicine name",
-        "manual_help": "Type medicine name, then press Read button",
-        "read_button": "Read medicine label",
+        "manual_help": "Type medicine name, then press Search button",
+        "read_button": "Search",
         "match": "Medicine match",
         "explanation": "Medicine use",
         "warning": "Safety warning",
         "source_url": "Source URL",
-        "model_note": "This app uses two small local AI models: MiniCPM to read text from images and Tiny Aya Global to generate text. It uses a curated database of 200 commonly used medicines in the UK and USA, with information taken from NHS Medicines A to Z and British National Formulary Drugs A to Z. These are publicly available medicine databases where you can find more information. This app was developed using OpenAI Codex.",
+        "model_note": "This app uses two small local AI models: MiniCPM-V OCR and Tiny Aya Global. Medicine information comes from a database of 200 medicines, with medicine uses and safety warnings based on NHS Medicines A to Z and the British National Formulary.",
         "glossary_title": "Improve translation",
         "glossary_note": "Tiny Aya is useful for translation, but it is not perfect. You can suggest better wording for the translation glossary. Suggestions are public and must be reviewed before they are added. Thank you for helping improve the app.",
         "glossary_language": "Language",
@@ -296,17 +296,17 @@ UI_LABELS = {
     },
     "French": {
         "intro": "Importez une photo d'une etiquette de medicament. Cet outil essaie de lire l'etiquette et d'expliquer a quoi le medicament sert habituellement. Il ne remplace pas un pharmacien ou un medecin.",
-        "image_label": "Photo de l'etiquette du medicament",
+        "image_label": "Photo",
         "image_help": "Importez une image ou utilisez l'option appareil photo pour prendre une nouvelle photo.",
         "manual_label": "Nom du medicament",
         "manual_placeholder": "Facultatif : saisissez le nom du medicament",
-        "manual_help": "Saisissez le nom du medicament, puis appuyez sur Lire",
-        "read_button": "Lire l'etiquette du medicament",
+        "manual_help": "Saisissez le nom du medicament, puis appuyez sur Rechercher",
+        "read_button": "Rechercher",
         "match": "Medicament trouve",
         "explanation": "Utilisation du medicament",
         "warning": "Avertissement de securite",
         "source_url": "URL source",
-        "model_note": "Cette application utilise deux petits modeles d'IA locaux : MiniCPM pour lire le texte des images et Tiny Aya Global pour generer le texte. Elle utilise une base de donnees selectionnee de 200 medicaments couramment utilises au Royaume-Uni et aux Etats-Unis, avec des informations issues de NHS Medicines A to Z et de British National Formulary Drugs A to Z. Ce sont des bases de donnees publiques ou vous pouvez trouver plus d'informations sur les medicaments. Cette application a ete developpee avec OpenAI Codex.",
+        "model_note": "Cette application utilise deux petits modeles d'IA locaux : MiniCPM-V OCR et Tiny Aya Global. Les informations proviennent d'une base de donnees de 200 medicaments ; les usages et les avertissements de securite reposent sur NHS Medicines A to Z et le British National Formulary.",
         "glossary_title": "Ameliorer la traduction",
         "glossary_note": "Tiny Aya est utile pour la traduction, mais il n'est pas parfait. Vous pouvez suggerer de meilleures formulations pour le glossaire de traduction. Les suggestions sont publiques et doivent etre verifiees avant d'etre ajoutees. Merci d'aider a ameliorer l'application.",
         "glossary_language": "Langue",
@@ -317,17 +317,17 @@ UI_LABELS = {
     },
     "German": {
         "intro": "Laden Sie ein Foto eines Arzneimitteletiketts hoch. Dieses Tool versucht, das Etikett zu lesen und zu erklaeren, wofuer das Arzneimittel ueblicherweise verwendet wird. Es ersetzt keinen Apotheker oder Arzt.",
-        "image_label": "Foto des Arzneimitteletiketts",
+        "image_label": "Foto",
         "image_help": "Laden Sie ein Bild hoch oder verwenden Sie die Kameraoption, um ein neues Foto aufzunehmen.",
         "manual_label": "Arzneimittelname",
         "manual_placeholder": "Optional: Arzneimittelname eingeben",
-        "manual_help": "Arzneimittelname eingeben, dann auf Lesen klicken",
-        "read_button": "Arzneimitteletikett lesen",
+        "manual_help": "Arzneimittelname eingeben, dann auf Suchen klicken",
+        "read_button": "Suchen",
         "match": "Arzneimittel-Treffer",
         "explanation": "Verwendung des Arzneimittels",
         "warning": "Sicherheitshinweis",
         "source_url": "Quellen-URL",
-        "model_note": "Diese App verwendet zwei kleine lokale KI-Modelle: MiniCPM zum Lesen von Text aus Bildern und Tiny Aya Global zum Erzeugen von Text. Sie nutzt eine kuratierte Datenbank mit 200 haeufig verwendeten Arzneimitteln in Grossbritannien und den USA, mit Informationen aus NHS Medicines A to Z und British National Formulary Drugs A to Z. Das sind oeffentlich verfuegbare Datenbanken, in denen Sie mehr Informationen zu Arzneimitteln finden koennen. Diese App wurde mit OpenAI Codex entwickelt.",
+        "model_note": "Diese App verwendet zwei kleine lokale KI-Modelle: MiniCPM-V OCR und Tiny Aya Global. Die Arzneimittelinformationen stammen aus einer Datenbank mit 200 Arzneimitteln; Anwendung und Sicherheitshinweise basieren auf NHS Medicines A to Z und dem British National Formulary.",
         "glossary_title": "Uebersetzung verbessern",
         "glossary_note": "Tiny Aya ist fuer Uebersetzungen nuetzlich, aber nicht perfekt. Sie koennen bessere Formulierungen fuer das Uebersetzungsglossar vorschlagen. Vorschlaege sind oeffentlich und muessen geprueft werden, bevor sie hinzugefuegt werden. Vielen Dank fuer Ihre Hilfe.",
         "glossary_language": "Sprache",
@@ -338,17 +338,17 @@ UI_LABELS = {
     },
     "Italian": {
         "intro": "Carica una foto dell'etichetta di un medicinale. Questo strumento prova a leggere l'etichetta e a spiegare per cosa viene usato di solito il medicinale. Non sostituisce un farmacista o un medico.",
-        "image_label": "Foto dell'etichetta del medicinale",
+        "image_label": "Foto",
         "image_help": "Carica un'immagine oppure usa l'opzione fotocamera per scattare una nuova foto.",
         "manual_label": "Nome del medicinale",
         "manual_placeholder": "Facoltativo: inserisci il nome del medicinale",
-        "manual_help": "Inserisci il nome del medicinale, poi premi Leggi",
-        "read_button": "Leggi etichetta medicinale",
+        "manual_help": "Inserisci il nome del medicinale, poi premi Cerca",
+        "read_button": "Cerca",
         "match": "Medicinale trovato",
         "explanation": "Uso del medicinale",
         "warning": "Avvertenza di sicurezza",
         "source_url": "URL fonte",
-        "model_note": "Questa app usa due piccoli modelli IA locali: MiniCPM per leggere il testo dalle immagini e Tiny Aya Global per generare il testo. Usa un database curato di 200 medicinali comunemente usati nel Regno Unito e negli Stati Uniti, con informazioni prese da NHS Medicines A to Z e British National Formulary Drugs A to Z. Sono database pubblici dove puoi trovare piu informazioni sui medicinali. Questa app e stata sviluppata usando OpenAI Codex.",
+        "model_note": "Questa app usa due piccoli modelli IA locali: MiniCPM-V OCR e Tiny Aya Global. Le informazioni provengono da un database di 200 medicinali; usi e avvertenze di sicurezza si basano su NHS Medicines A to Z e British National Formulary.",
         "glossary_title": "Migliora traduzione",
         "glossary_note": "Tiny Aya e utile per la traduzione, ma non e perfetto. Puoi suggerire frasi migliori per il glossario di traduzione. I suggerimenti sono pubblici e devono essere controllati prima di essere aggiunti. Grazie per aiutare a migliorare l'app.",
         "glossary_language": "Lingua",
@@ -359,17 +359,17 @@ UI_LABELS = {
     },
     "Romanian": {
         "intro": "Incarca o fotografie cu eticheta unui medicament. Acest instrument incearca sa citeasca eticheta si sa explice pentru ce este folosit de obicei medicamentul. Nu inlocuieste un farmacist sau un medic.",
-        "image_label": "Fotografie cu eticheta medicamentului",
+        "image_label": "Fotografie",
         "image_help": "Incarca o imagine sau foloseste optiunea camera pentru a face o fotografie noua.",
         "manual_label": "Numele medicamentului",
         "manual_placeholder": "Optional: scrie numele medicamentului",
-        "manual_help": "Scrie numele medicamentului, apoi apasa Citeste",
-        "read_button": "Citeste eticheta medicamentului",
+        "manual_help": "Scrie numele medicamentului, apoi apasa Cauta",
+        "read_button": "Cauta",
         "match": "Medicament gasit",
         "explanation": "Utilizarea medicamentului",
         "warning": "Avertisment de siguranta",
         "source_url": "URL sursa",
-        "model_note": "Aceasta aplicatie foloseste doua modele AI locale mici: MiniCPM pentru citirea textului din imagini si Tiny Aya Global pentru generarea textului. Foloseste o baza de date curata manual cu 200 de medicamente folosite frecvent in UK si SUA, cu informatii preluate din NHS Medicines A to Z si British National Formulary Drugs A to Z. Acestea sunt baze de date publice unde poti gasi mai multe informatii despre medicamente. Aplicatia a fost dezvoltata folosind OpenAI Codex.",
+        "model_note": "Aceasta aplicatie foloseste doua modele AI locale mici: MiniCPM-V OCR si Tiny Aya Global. Informatiile provin dintr-o baza de date cu 200 de medicamente; utilizarea medicamentelor si avertismentele de siguranta se bazeaza pe NHS Medicines A to Z si British National Formulary.",
         "glossary_title": "Imbunatateste traducerea",
         "glossary_note": "Tiny Aya este util pentru traducere, dar nu este perfect. Poti sugera formulari mai bune pentru glosarul de traducere. Sugestiile sunt publice si trebuie verificate inainte de a fi adaugate. Iti multumim ca ajuti la imbunatatirea aplicatiei.",
         "glossary_language": "Limba",
@@ -380,17 +380,17 @@ UI_LABELS = {
     },
     "Spanish": {
         "intro": "Suba una foto de la etiqueta de un medicamento. Esta herramienta intenta leer la etiqueta y explicar para que se usa normalmente el medicamento. No sustituye a un farmaceutico ni a un medico.",
-        "image_label": "Foto de la etiqueta del medicamento",
+        "image_label": "Foto",
         "image_help": "Suba una imagen o use la opcion de camara para tomar una foto nueva.",
         "manual_label": "Nombre del medicamento",
         "manual_placeholder": "Opcional: escriba el nombre del medicamento",
-        "manual_help": "Escriba el nombre del medicamento y pulse Leer",
-        "read_button": "Leer etiqueta del medicamento",
+        "manual_help": "Escriba el nombre del medicamento y pulse Buscar",
+        "read_button": "Buscar",
         "match": "Medicamento encontrado",
         "explanation": "Uso del medicamento",
         "warning": "Advertencia de seguridad",
         "source_url": "URL de origen",
-        "model_note": "Esta aplicacion usa dos pequenos modelos locales de IA: MiniCPM para leer texto de imagenes y Tiny Aya Global para generar texto. Usa una base de datos curada de 200 medicamentos de uso comun en el Reino Unido y Estados Unidos, con informacion tomada de NHS Medicines A to Z y British National Formulary Drugs A to Z. Son bases de datos publicas donde puede encontrar mas informacion sobre los medicamentos. Esta aplicacion se desarrollo con OpenAI Codex.",
+        "model_note": "Esta aplicacion usa dos pequenos modelos locales de IA: MiniCPM-V OCR y Tiny Aya Global. La informacion proviene de una base de datos de 200 medicamentos; los usos y las advertencias de seguridad se basan en NHS Medicines A to Z y British National Formulary.",
         "glossary_title": "Mejorar traduccion",
         "glossary_note": "Tiny Aya es util para la traduccion, pero no es perfecto. Puede sugerir mejores frases para el glosario de traduccion. Las sugerencias son publicas y deben revisarse antes de anadirse. Gracias por ayudar a mejorar la aplicacion.",
         "glossary_language": "Idioma",
@@ -1108,12 +1108,12 @@ def no_database_info_message(language: str) -> str:
 
 def manual_entry_prompt(language: str) -> str:
     messages = {
-        "English": "N/A\nCould not process image. Type the medicine name or label text, then search again.",
-        "French": "N/A\nImpossible de traiter l'image. Saisissez le nom du medicament ou le texte de l'etiquette, puis relancez la recherche.",
-        "German": "N/A\nDas Bild konnte nicht verarbeitet werden. Geben Sie den Arzneimittelnamen oder den Etikettentext ein und suchen Sie erneut.",
-        "Italian": "N/A\nImpossibile elaborare l'immagine. Inserisci il nome del medicinale o il testo dell'etichetta, poi cerca di nuovo.",
-        "Romanian": "N/A\nImaginea nu a putut fi procesata. Introdu numele medicamentului sau textul de pe eticheta, apoi cauta din nou.",
-        "Spanish": "N/A\nNo se pudo procesar la imagen. Escriba el nombre del medicamento o el texto de la etiqueta y busque de nuevo.",
+        "English": "N/A\nThe image could not be processed. Please enter the name of the medicine and search again.",
+        "French": "N/A\nL'image n'a pas pu etre traitee. Veuillez saisir le nom du medicament et relancer la recherche.",
+        "German": "N/A\nDas Bild konnte nicht verarbeitet werden. Bitte geben Sie den Namen des Arzneimittels ein und suchen Sie erneut.",
+        "Italian": "N/A\nNon e stato possibile elaborare l'immagine. Inserisci il nome del medicinale e cerca di nuovo.",
+        "Romanian": "N/A\nImaginea nu a putut fi procesata. Introdu numele medicamentului si cauta din nou.",
+        "Spanish": "N/A\nNo se pudo procesar la imagen. Introduzca el nombre del medicamento y busque de nuevo.",
     }
     return messages[language]
 
@@ -1185,7 +1185,7 @@ def update_ui_language(language: str):
         gr.update(label=labels["bad_phrase"]),
         gr.update(label=labels["preferred_phrase"]),
         gr.update(value=labels["glossary_submit"]),
-        gr.update(label=labels["glossary_table"], value=load_glossary_suggestions()),
+        gr.update(label=labels["glossary_table"]),
     )
 
 
@@ -1545,6 +1545,20 @@ def read_label(
 
 
 CUSTOM_CSS = """
+/* ── Force light palette (backstop if .dark class is applied) ───── */
+.dark {
+    --body-background-fill: #f0f4f5;
+    --background-fill-primary: #ffffff;
+    --background-fill-secondary: #ffffff;
+    --block-background-fill: #ffffff;
+    --border-color-primary: #e3e8eb;
+    --body-text-color: #212b32;
+    --body-text-color-subdued: #425563;
+    --color-accent-soft: #e8f4fe;
+    color-scheme: light;
+}
+html { color-scheme: light; }
+
 /* ── Base ─────────────────────────────────────────── */
 .gradio-container {
     background: #f0f4f5 !important;
@@ -1567,12 +1581,19 @@ input[type="search"],
 }
 
 /* ── Brand header ─────────────────────────────────── */
+/* Zero the HTML wrapper padding so the blue card spans the full content
+   width, matching the accordion below it. */
+#brand-header-block {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+}
 #medilens-header {
     background: #005eb8;
-    border-radius: 6px;
+    border-radius: 24px;
     padding: 24px 28px 20px;
     margin-bottom: 12px;
-    box-shadow: 0 2px 6px rgba(0, 94, 184, 0.25);
+    box-shadow: 0 1px 3px rgba(0, 94, 184, 0.30), 0 6px 16px rgba(0, 94, 184, 0.18);
     display: flex;
     align-items: center;
     gap: 16px;
@@ -1605,7 +1626,7 @@ input[type="search"],
     background: #e8f4fe !important;
     border-left: 4px solid #005eb8 !important;
     padding: 12px 16px !important;
-    border-radius: 0 4px 4px 0 !important;
+    border-radius: 0 16px 16px 0 !important;
     box-shadow: none !important;
     margin-bottom: 4px !important;
 }
@@ -1620,10 +1641,10 @@ input[type="search"],
 #top-left-panel,
 #top-right-panel {
     background: white !important;
-    border-radius: 6px !important;
-    padding: 20px !important;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06) !important;
-    border: 1px solid #d8dde0 !important;
+    border-radius: 20px !important;
+    padding: 24px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.06) !important;
+    border: 1px solid #e3e8eb !important;
     min-height: 480px;
 }
 
@@ -1633,7 +1654,7 @@ input[type="search"],
     height: 250px !important;
     min-height: 250px !important;
     max-height: 250px !important;
-    border-radius: 4px;
+    border-radius: 16px;
     border: 2px dashed #aeb7bd !important;
     background: #f0f4f5;
     position: relative !important;
@@ -1647,7 +1668,7 @@ input[type="search"],
     right: 8px !important;
     z-index: 5 !important;
     background: #f0f4f5 !important;
-    border-radius: 4px !important;
+    border-radius: 12px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1657,11 +1678,15 @@ input[type="search"],
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
+    border: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
 }
 #medicine-image .source-selection button {
     margin: 0 6px !important;
     opacity: 1 !important;
     visibility: visible !important;
+    border: none !important;
 }
 /* Reserve space at the top so the photo sits below the buttons (does not cover them) */
 #medicine-image .image-container {
@@ -1680,11 +1705,12 @@ input[type="search"],
 #match-output {
     background: #e8f4fe;
     border: 1px solid #aed6f1;
-    border-left: 4px solid #005eb8;
-    border-radius: 0 6px 6px 0;
+    border-radius: 16px;
     padding: 10px 16px;
     min-height: 69px;
-    margin-bottom: 4px;
+    margin: 0 -3px 4px -3px;
+    width: calc(100% + 6px);
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -1706,8 +1732,8 @@ input[type="search"],
 .confidence-badge {
     display: inline-flex;
     align-items: center;
-    padding: 2px 9px;
-    border-radius: 4px;
+    padding: 2px 10px;
+    border-radius: 9999px;
     font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.01em;
@@ -1722,14 +1748,18 @@ input[type="search"],
     border-color: #b7e0c4 !important;
     color: #212b32 !important;
     border-left: 4px solid #007f3b !important;
-    border-radius: 0 4px 4px 0 !important;
+    border-radius: 0 14px 14px 0 !important;
+    font-size: 0.9rem !important;
+    margin: 0 -2px !important;
+    width: calc(100% + 4px) !important;
+    box-sizing: border-box !important;
 }
 /* Green label pill to match the Medicine use box */
 #explanation-output label span {
     background: #d4eddb !important;
     color: #00451f !important;
-    padding: 2px 8px !important;
-    border-radius: 4px !important;
+    padding: 2px 10px !important;
+    border-radius: 9999px !important;
 }
 
 /* ── Warning output ───────────────────────────────── */
@@ -1738,14 +1768,18 @@ input[type="search"],
     border-color: #ffb81c !important;
     color: #4a3700 !important;
     border-left: 4px solid #ffb81c !important;
-    border-radius: 0 4px 4px 0 !important;
+    border-radius: 0 14px 14px 0 !important;
+    font-size: 0.9rem !important;
+    margin: 0 -2px !important;
+    width: calc(100% + 4px) !important;
+    box-sizing: border-box !important;
 }
 /* Amber label pill to match the Safety warning box */
 #warning-output label span {
     background: #fff3cd !important;
     color: #4a3700 !important;
-    padding: 2px 8px !important;
-    border-radius: 4px !important;
+    padding: 2px 10px !important;
+    border-radius: 9999px !important;
 }
 
 /* ── Source URL (HTML) ────────────────────────────── */
@@ -1756,10 +1790,13 @@ input[type="search"],
 .source-url-box {
     background: #f0f4f5;
     border: 1px solid #aeb7bd;
-    border-radius: 4px;
+    border-radius: 12px;
     padding: 10px 14px;
     font-size: 0.9rem;
     color: #212b32;
+    margin: 0 -2px;
+    width: calc(100% + 4px);
+    box-sizing: border-box;
 }
 .source-url-label {
     display: block;
@@ -1791,26 +1828,30 @@ input[type="search"],
 /* ── Read button (NHS green) ──────────────────────── */
 #read-btn button {
     background: #007f3b !important;
-    border-radius: 4px !important;
-    font-weight: 700 !important;
+    border-radius: 9999px !important;
+    font-weight: 600 !important;
     font-size: 1rem !important;
-    padding: 14px 20px !important;
-    border: 2px solid #007f3b !important;
-    box-shadow: 0 2px 0 #00401d !important;
+    letter-spacing: 0.02em !important;
+    padding: 14px 24px !important;
+    border: none !important;
+    box-shadow: 0 1px 2px rgba(0, 64, 29, 0.30), 0 2px 6px rgba(0, 127, 59, 0.25) !important;
     color: white !important;
     width: 100% !important;
-    transition: background 0.1s ease, border-color 0.1s ease !important;
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease !important;
 }
 #read-btn button:hover {
     background: #00662f !important;
-    border-color: #00662f !important;
-    box-shadow: 0 2px 0 #00331a !important;
+    box-shadow: 0 2px 4px rgba(0, 64, 29, 0.35), 0 6px 16px rgba(0, 127, 59, 0.30) !important;
+}
+#read-btn button:active {
+    transform: translateY(1px) !important;
+    box-shadow: 0 1px 2px rgba(0, 64, 29, 0.30) !important;
 }
 
 /* ── Language selector ────────────────────────────── */
 #language-selector {
     border: 2px solid #aeb7bd !important;
-    border-radius: 4px !important;
+    border-radius: 12px !important;
     background: white !important;
 }
 
@@ -1834,7 +1875,7 @@ input[type="search"],
 }
 #manual-label-section:has(#manual-label-helper:not([style*="display: none"])) {
     border: 2px solid #ffb81c !important;
-    border-radius: 4px !important;
+    border-radius: 12px !important;
     padding: 8px !important;
     background: #fff9e6 !important;
 }
@@ -1844,8 +1885,15 @@ input[type="search"],
 }
 
 /* ── Model note text ──────────────────────────────── */
+#model-note {
+    background: #eef6fd !important;
+    border-left: 4px solid #aed6f1 !important;
+    padding: 12px 16px !important;
+    border-radius: 0 16px 16px 0 !important;
+    margin-top: 4px !important;
+}
 #model-note, #model-note p {
-    color: #212b32 !important;
+    color: #425563 !important;
     font-size: 0.85rem !important;
     line-height: 1.6 !important;
 }
@@ -1855,7 +1903,7 @@ input[type="search"],
     border-left: 4px solid #005eb8;
     padding: 8px 12px;
     background: #e8f4fe;
-    border-radius: 0 4px 4px 0;
+    border-radius: 0 14px 14px 0;
     color: #212b32 !important;
 }
 #glossary-note p { color: #212b32 !important; }
@@ -1885,6 +1933,38 @@ input[type="search"],
 #technical-right-panel {
     min-height: 200px;
 }
+
+/* ── Phone optimization ───────────────────────────── */
+@media (max-width: 600px) {
+    #medilens-header {
+        border-radius: 16px;
+        padding: 16px 18px;
+        gap: 12px;
+    }
+    #medilens-header .brand-logo { height: 44px; }
+    #medilens-header h2 { font-size: 1.4rem !important; }
+    #medilens-header p { font-size: 0.8rem !important; }
+    #intro-text { padding: 10px 12px !important; }
+    #intro-text p { font-size: 0.85rem !important; }
+    #top-left-panel,
+    #top-right-panel {
+        padding: 16px !important;
+        min-height: 0 !important;
+        border-radius: 16px !important;
+    }
+    #medicine-image,
+    #medicine-image .image-container {
+        height: 210px !important;
+        min-height: 210px !important;
+        max-height: 210px !important;
+    }
+    #medicine-image .image-frame,
+    #medicine-image .image-preview,
+    #medicine-image img { max-height: 150px !important; }
+    #technical-left-panel,
+    #technical-right-panel { min-height: 0 !important; }
+    #model-note, #model-note p { font-size: 0.8rem !important; }
+}
 """
 
 BRAND_HEADER_HTML = """
@@ -1899,23 +1979,43 @@ BRAND_HEADER_HTML = """
 
 
 FORCE_LIGHT_THEME_JS = """
-function refresh() {
+() => {
     const url = new URL(window.location);
     if (url.searchParams.get('__theme') !== 'light') {
         url.searchParams.set('__theme', 'light');
-        window.location.href = url.href;
+        window.location.replace(url.href);
     }
 }
+"""
+
+# Runs in <head> before Gradio renders, so the page never appears in the
+# device's dark/system theme: it redirects to ?__theme=light immediately.
+FORCE_LIGHT_THEME_HEAD = """
+<script>
+(function () {
+    try {
+        var url = new URL(window.location);
+        if (url.searchParams.get('__theme') !== 'light') {
+            url.searchParams.set('__theme', 'light');
+            window.location.replace(url.href);
+        }
+    } catch (e) {}
+})();
+</script>
 """
 
 
 with gr.Blocks(
     title="MediLens",
     css=CUSTOM_CSS,
-    theme=gr.themes.Soft(primary_hue=gr.themes.colors.blue),
+    head=FORCE_LIGHT_THEME_HEAD,
+    theme=gr.themes.Soft(
+        primary_hue=gr.themes.colors.blue,
+        radius_size=gr.themes.sizes.radius_lg,
+    ),
     js=FORCE_LIGHT_THEME_JS,
 ) as demo:
-    gr.HTML(BRAND_HEADER_HTML)
+    gr.HTML(BRAND_HEADER_HTML, elem_id="brand-header-block")
     intro_markdown = gr.Markdown(
         f"# MediLens\n{UI_LABELS['English']['intro']}",
         elem_id="intro-text",
@@ -1953,7 +2053,7 @@ with gr.Blocks(
                 elem_id="language-selector",
             )
             with gr.Column(elem_id="read-action-section"):
-                read_button = gr.Button("Read medicine label", variant="primary", elem_id="read-btn")
+                read_button = gr.Button("Search", variant="primary", elem_id="read-btn")
                 processing_progress = gr.HTML("", visible=True, elem_id="processing-progress")
 
         with gr.Column(scale=1, elem_id="top-right-panel"):
@@ -1991,7 +2091,7 @@ with gr.Blocks(
                     minimum=MIN_IMAGE_IDENTIFICATION_SECONDS,
                     maximum=MAX_IMAGE_IDENTIFICATION_SECONDS,
                     precision=0,
-                    label="Max image wait time, seconds",
+                    label="Max image processing time, seconds",
                 )
                 orientation_mode_input = gr.Dropdown(
                     choices=[
@@ -2127,6 +2227,7 @@ with gr.Blocks(
             match_text_state,
             manual_label_helper,
         ],
+        show_progress="hidden",
     )
 
     manual_label_input.change(
@@ -2198,4 +2299,7 @@ if __name__ == "__main__":
     launch_kwargs = {"server_port": APP_SERVER_PORT, "share": APP_SHARE}
     if APP_SERVER_NAME:
         launch_kwargs["server_name"] = APP_SERVER_NAME
+    favicon_file = Path(__file__).with_name("icon_update.png")
+    if favicon_file.exists():
+        launch_kwargs["favicon_path"] = str(favicon_file)
     demo.launch(**launch_kwargs)
