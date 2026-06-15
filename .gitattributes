@@ -1,0 +1,6 @@
+# Force Unix line endings for files consumed by Linux build tooling.
+# Hugging Face Spaces runs packages.txt through apt; a stray CR breaks it.
+space/packages.txt text eol=lf
+space/requirements.txt text eol=lf
+packages.txt text eol=lf
+requirements.txt text eol=lf
