@@ -1,14 +1,15 @@
 """MediLens Local - lightweight Hugging Face Spaces demo.
 
-This is a trimmed, fully self-contained version of the MediLens desktop app,
-built for the Build Small Hackathon Space.
+A trimmed, fully self-contained version of the MediLens desktop app, styled to
+match it (light theme, branded header, fixed-size panels, confidence badge,
+Improve-translation section).
 
 It keeps the parts that run reliably on a free CPU Space:
 - Type a medicine name (generic or brand), or upload a label image.
 - Optional Tesseract OCR reads text from the image.
 - Fuzzy-match the text against a local 200-medicine CSV database.
-- Show the likely medicine, what it is commonly used for, a safety warning,
-  and the source, in 6 languages using offline template wording.
+- Show the likely medicine, common use, a safety warning, the source, and the
+  extracted text, in 6 languages using offline template wording.
 
 It does NOT call any cloud API and does NOT need a GPU.
 
@@ -25,9 +26,11 @@ from pathlib import Path
 import gradio as gr
 import pandas as pd
 
+from _assets import BRAND_HEADER_HTML, FORCE_LIGHT_THEME_JS, CUSTOM_CSS
+
 try:
     from rapidfuzz import fuzz
-except ModuleNotFoundError:  # pragma: no cover - fallback if rapidfuzz missing
+except ModuleNotFoundError:  # pragma: no cover
     class _FallbackFuzz:
         @staticmethod
         def ratio(left: str, right: str) -> int:
@@ -35,8 +38,6 @@ except ModuleNotFoundError:  # pragma: no cover - fallback if rapidfuzz missing
 
     fuzz = _FallbackFuzz()
 
-# Tesseract is optional. If it is not installed, the image box still works but we
-# fall back to asking the user to type the medicine name.
 try:
     import pytesseract
     from PIL import Image
@@ -48,6 +49,7 @@ except Exception:  # pragma: no cover
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_FILE = PROJECT_ROOT / "medicines.csv"
+GLOSSARY_SUGGESTIONS_FILE = PROJECT_ROOT / "translation_glossary_suggestions.csv"
 
 LANGUAGES = ["English", "French", "German", "Italian", "Romanian", "Spanish"]
 
@@ -115,6 +117,32 @@ def load_medicines() -> pd.DataFrame:
 MEDICINES = load_medicines()
 
 
+def load_glossary_suggestions() -> pd.DataFrame:
+    columns = ["language", "bad_phrase", "preferred_phrase"]
+    if not GLOSSARY_SUGGESTIONS_FILE.exists():
+        return pd.DataFrame(columns=columns)
+    return pd.read_csv(GLOSSARY_SUGGESTIONS_FILE).fillna("")
+
+
+def submit_glossary_suggestion(language, bad_phrase, preferred_phrase):
+    bad_phrase = (bad_phrase or "").strip()
+    preferred_phrase = (preferred_phrase or "").strip()
+    if not bad_phrase or not preferred_phrase:
+        return load_glossary_suggestions(), bad_phrase, preferred_phrase
+    suggestions = load_glossary_suggestions()
+    new_row = pd.DataFrame([{
+        "language": language,
+        "bad_phrase": bad_phrase,
+        "preferred_phrase": preferred_phrase,
+    }])
+    suggestions = pd.concat([new_row, suggestions], ignore_index=True)
+    try:
+        suggestions.to_csv(GLOSSARY_SUGGESTIONS_FILE, index=False, encoding="utf-8")
+    except Exception:
+        pass  # Space storage is ephemeral; keep the in-memory table either way.
+    return suggestions, "", ""
+
+
 def clean_text(text: str) -> str:
     text = (text or "").lower()
     text = re.sub(r"[^a-z0-9\s;/-]", " ", text)
@@ -128,6 +156,11 @@ def confidence_label(score: int) -> str:
     if score >= MEDIUM_CONFIDENCE_MIN_SCORE:
         return "medium"
     return "low"
+
+
+def capitalize_name(name: str) -> str:
+    name = (name or "").strip()
+    return name[:1].upper() + name[1:] if name else name
 
 
 def text_chunks(text: str) -> list:
@@ -161,6 +194,43 @@ def find_best_match(query_text: str) -> dict:
                 best = {"score": score, "matched_name": name, "row": row}
     best["confidence"] = confidence_label(best["score"])
     return best
+
+
+MATCH_NA_HTML = '<p class="match-na">N/A</p>'
+
+
+def likely_match_html(match: dict) -> str:
+    row = match["row"]
+    if row is None or match["confidence"] == "low":
+        return MATCH_NA_HTML
+    generic_name = row["generic_name"]
+    matched_name = match["matched_name"]
+    confidence = match["confidence"]
+    score = match["score"]
+    if clean_text(matched_name) == clean_text(generic_name):
+        display_name = capitalize_name(generic_name)
+    else:
+        display_name = f"{capitalize_name(matched_name)} / {capitalize_name(generic_name)}"
+    badge_class = f"confidence-{confidence}"
+    badge_label = f"{confidence.capitalize()} confidence &middot; {score}/100"
+    return (
+        f'<div class="match-card">'
+        f'<p class="match-medicine-name">{display_name}</p>'
+        f'<span class="confidence-badge {badge_class}">{badge_label}</span>'
+        f"</div>"
+    )
+
+
+def source_url_html(url: str) -> str:
+    url = (url or "").strip()
+    if not url:
+        return ""
+    return (
+        f'<div class="source-url-box">'
+        f'<span class="source-url-label">Source</span>'
+        f'<a href="{url}" target="_blank" rel="noopener noreferrer">{url}</a>'
+        f"</div>"
+    )
 
 
 def template_explanation(match: dict, language: str) -> str:
@@ -201,11 +271,6 @@ def ocr_image(image) -> str:
         return ""
 
 
-def capitalize_name(name: str) -> str:
-    name = (name or "").strip()
-    return name[:1].upper() + name[1:] if name else name
-
-
 def identify(image, typed_name, language):
     language = language or "English"
     typed_name = (typed_name or "").strip()
@@ -215,7 +280,7 @@ def identify(image, typed_name, language):
 
     if not query_text:
         return (
-            "N/A",
+            MATCH_NA_HTML,
             LOW_CONFIDENCE_MESSAGE[language],
             GENERAL_SAFETY_WARNING[language],
             "",
@@ -223,13 +288,12 @@ def identify(image, typed_name, language):
         )
 
     match = find_best_match(query_text)
-    # Typed names must clear a higher bar before we trust them.
     if typed_name and match["score"] < MANUAL_MATCH_MIN_SCORE:
         match["confidence"] = "low"
 
     if match["row"] is None or match["confidence"] == "low":
         return (
-            "N/A",
+            MATCH_NA_HTML,
             LOW_CONFIDENCE_MESSAGE[language],
             GENERAL_SAFETY_WARNING[language],
             "",
@@ -237,60 +301,118 @@ def identify(image, typed_name, language):
         )
 
     row = match["row"]
-    medicine_match = f"{capitalize_name(match['matched_name'])} ({match['confidence']} confidence)"
     explanation = template_explanation(match, language)
-
     specific = str(row.get("safety_warning", "")).strip()
     safety = GENERAL_SAFETY_WARNING[language]
     if specific and language == "English":
         safety = f"{specific}\n\n{safety}"
-
-    source = ""
-    if str(row.get("source_url", "")).strip():
-        source = f"{row.get('source_name', 'Source')}: {row['source_url']}"
-
-    return medicine_match, explanation, safety, source, ocr_text or typed_name
+    source = source_url_html(str(row.get("source_url", "")))
+    return likely_match_html(match), explanation, safety, source, ocr_text or typed_name
 
 
-DISCLAIMER = (
-    "**Informational only.** MediLens does not give dosage instructions, does not tell you to take a "
-    "medicine, and does not confirm a medicine is safe for you. It runs fully offline against a local "
-    "200-medicine database. Always check with a pharmacist or doctor."
+INTRO_HTML = (
+    '<p>Type a medicine name or upload a label photo, choose a language, and MediLens '
+    'explains what the medicine is commonly used for - fully offline, against a local '
+    '200-medicine database. <strong>Informational only:</strong> it gives no dosage advice '
+    'and does not replace a pharmacist or doctor.</p>'
+)
+
+MANUAL_HELPER_HTML = '<p>Tip: typing the name (generic or brand) gives the most reliable match.</p>'
+
+MODEL_NOTE = (
+    "This hosted Space is the **lightweight CPU demo**: name lookup, Tesseract OCR, and "
+    "offline multilingual explanations from a local database. The full desktop app adds "
+    "**MiniCPM-V 4.6** (OpenBMB) vision OCR and **Tiny Aya Global** (Cohere) translation via "
+    "llama.cpp - shown in the demo video."
+)
+
+REACHY_HTML = (
+    '<div class="source-url-box">'
+    '<p><strong>Reachy Mini voice assistant (in the demo video).</strong> '
+    'The full project also runs hands-free on a Reachy Mini robot: say its name plus a '
+    'medicine word, it captures the label with its camera, identifies the medicine, and '
+    'speaks the answer in your language. Speech is fully offline - faster-whisper (OpenAI '
+    'Whisper) for listening, Kokoro and Piper voices for speaking. This is shown in the demo '
+    'video; the hosted Space runs the lightweight web version above.</p>'
+    '</div>'
+)
+
+THEME = gr.themes.Soft(
+    primary_hue=gr.themes.colors.blue,
+    radius_size=gr.themes.sizes.radius_lg,
 )
 
 with gr.Blocks(title="MediLens Local") as demo:
-    gr.Markdown("# 💊 MediLens Local: Medicine Label Helper")
-    gr.Markdown(
-        "Upload a medicine label photo **or** type a medicine name, pick a language, and MediLens "
-        "explains what it is commonly used for - in plain language, fully offline."
-    )
-    gr.Markdown(DISCLAIMER)
+    gr.HTML(BRAND_HEADER_HTML, elem_id="brand-header-block")
+    gr.HTML(INTRO_HTML, elem_id="intro-text")
 
-    with gr.Row():
-        with gr.Column():
-            image_in = gr.Image(label="Medicine label image (optional)", sources=["upload", "webcam"], type="pil")
-            name_in = gr.Textbox(label="Medicine name (generic or brand)", placeholder="e.g. paracetamol or Panadol")
-            lang_in = gr.Dropdown(LANGUAGES, value="English", label="Language")
-            search_btn = gr.Button("Search", variant="primary")
-            if not _HAS_TESSERACT:
-                gr.Markdown("_Image OCR is unavailable on this server - please type the medicine name._")
-        with gr.Column():
-            match_out = gr.Textbox(label="Medicine match")
-            use_out = gr.Textbox(label="Medicine use", lines=4)
-            safety_out = gr.Textbox(label="Safety warning", lines=4)
-            source_out = gr.Textbox(label="Source")
-            ocr_out = gr.Textbox(label="Extracted text (technical detail)", lines=3)
+    with gr.Row(equal_height=True):
+        with gr.Column(scale=1, elem_id="top-left-panel"):
+            image_in = gr.Image(
+                label="Medicine label image (optional)",
+                sources=["upload", "webcam"],
+                type="pil",
+                elem_id="medicine-image",
+            )
+            with gr.Group(elem_id="manual-label-section"):
+                name_in = gr.Textbox(
+                    label="Medicine name (generic or brand)",
+                    placeholder="e.g. paracetamol or Panadol",
+                    elem_id="manual-label-input",
+                )
+                gr.HTML(MANUAL_HELPER_HTML, elem_id="manual-label-helper")
+            lang_in = gr.Dropdown(LANGUAGES, value="English", label="Language", elem_id="language-selector")
+            with gr.Column(elem_id="read-action-section"):
+                search_btn = gr.Button("Search", variant="primary", elem_id="read-btn")
+                if not _HAS_TESSERACT:
+                    gr.HTML(
+                        '<p class="match-na">Image OCR is unavailable - please type the medicine name.</p>',
+                        elem_id="processing-progress",
+                    )
 
-    gr.Examples(
-        examples=[["paracetamol"], ["ibuprofen"], ["amoxicillin"], ["omeprazole"]],
-        inputs=[name_in],
-    )
+        with gr.Column(scale=1, elem_id="top-right-panel"):
+            match_output = gr.HTML(MATCH_NA_HTML, elem_id="match-output")
+            explanation_output = gr.Textbox(label="Medicine use", lines=5, elem_id="explanation-output")
+            warning_output = gr.Textbox(label="Safety warning", lines=5, elem_id="warning-output")
+            source_url_output = gr.HTML("", elem_id="source-url-output")
+
+    gr.Markdown(MODEL_NOTE, elem_id="model-note")
+
+    gr.Examples(examples=[["paracetamol"], ["ibuprofen"], ["amoxicillin"], ["omeprazole"]], inputs=[name_in])
+
+    with gr.Accordion("Improve translation", open=False):
+        gr.HTML(
+            '<p>Suggest better wording for a phrase. Suggestions are collected for human '
+            'review and are not applied automatically.</p>',
+            elem_id="glossary-note",
+        )
+        with gr.Row(equal_height=True):
+            glossary_language_input = gr.Dropdown(choices=LANGUAGES, value="Romanian", label="Language")
+            bad_phrase_input = gr.Textbox(label="Phrase to improve")
+            preferred_phrase_input = gr.Textbox(label="Preferred phrase")
+        submit_glossary_button = gr.Button("Submit suggestion")
+        glossary_suggestions_table = gr.Dataframe(
+            value=load_glossary_suggestions(),
+            headers=["language", "bad_phrase", "preferred_phrase"],
+            datatype=["str", "str", "str"],
+            label="Submitted suggestions (this session)",
+            interactive=False,
+        )
+
+    with gr.Accordion("Technical details", open=False):
+        ocr_output = gr.Textbox(label="Extracted OCR text", lines=4, elem_id="ocr-output")
+        gr.HTML(REACHY_HTML, elem_id="reachy-status-output")
 
     search_btn.click(
         identify,
         inputs=[image_in, name_in, lang_in],
-        outputs=[match_out, use_out, safety_out, source_out, ocr_out],
+        outputs=[match_output, explanation_output, warning_output, source_url_output, ocr_output],
+    )
+    submit_glossary_button.click(
+        submit_glossary_suggestion,
+        inputs=[glossary_language_input, bad_phrase_input, preferred_phrase_input],
+        outputs=[glossary_suggestions_table, bad_phrase_input, preferred_phrase_input],
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(css=CUSTOM_CSS, theme=THEME, js=FORCE_LIGHT_THEME_JS)
