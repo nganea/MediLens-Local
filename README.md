@@ -4,7 +4,18 @@ MediLens Local is a small local-first Gradio app that reads a medicine label ima
 
 It does not use cloud APIs and does not replace a pharmacist, doctor, or other qualified healthcare professional.
 
-This app was developed with the help of OpenAI Codex and Claude.
+This app was developed with the help of OpenAI Codex and Claude Opus.
+
+## Models and Credits
+
+MediLens runs two small local models through `llama.cpp`, both used fully offline:
+
+- **MiniCPM-V 4.6** (vision OCR) - by **OpenBMB** (`openbmb/MiniCPM-V-4.6-gguf` on Hugging Face). Reads medicine label text from a photo.
+- **Tiny Aya Global** (3B, explanation and translation) - by **Cohere / Cohere Labs** (`CohereLabs/tiny-aya-global-GGUF` on Hugging Face). Rewrites and translates the plain-language explanation.
+
+Local text OCR also uses **Tesseract** (`pytesseract`), and name matching uses **rapidfuzz**.
+
+The app was developed with the help of **OpenAI Codex** and **Claude Opus**.
 
 ## Features
 
