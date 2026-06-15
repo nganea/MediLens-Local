@@ -34,8 +34,14 @@ Branches:
 - main: stable cleaned version
 - experiments: current branch for active work and hackathon changes
 
-Recent committed work on experiments:
-- Commit 9402d67: Add Reachy Mini desktop controls
+Recent committed work on experiments (latest first):
+- Fully translate safety warning on hosted Space
+- Run the full MediLens app on the Space (no-GPU aware)
+- Add full Technical details panel to Space, matching desktop
+- Restyle Space to match desktop app
+- Fix Space build (drop gradio from requirements, force LF, pin Gradio 6.18.0)
+- Add lightweight Hugging Face Space build and refresh README
+The repo also has a GitHub remote (origin) now; see GitHub repository below.
 
 Core app
 --------
@@ -478,28 +484,81 @@ Performance notes
 - If Reachy and desktop both call MiniCPM at the same time, they may compete for
   the same model server/GPU.
 
+GitHub repository
+-----------------
+The project is now backed up on GitHub:
+- https://github.com/nganea/MediLens-Local
+- Branches main and experiments are both pushed and in sync.
+- A .gitattributes file forces LF line endings on packages.txt and
+  requirements.txt so Windows CRLF does not break the Hugging Face apt build.
+
+Hugging Face Space deployment (DONE)
+------------------------------------
+The app is deployed and live as a Hugging Face Space:
+- https://huggingface.co/spaces/build-small-hackathon/medilens-local
+- It is owned by the build-small-hackathon org (transferred from the personal
+  account n-k-rush), as the hackathon requires.
+
+The Space runs the FULL app.py (same design as the desktop app), not a separate
+lightweight app. Key points:
+- The deployable bundle lives in the space/ folder of the repo. It contains a
+  copy of app.py plus medilens_core/, static/medilens.css, medicines.csv,
+  translation_glossary.csv, icon_update.png, a Space README.md with Gradio YAML
+  frontmatter (sdk: gradio, sdk_version: 6.18.0, app_file: app.py), a
+  gradio-free requirements.txt (gradio is installed via sdk_version), and
+  packages.txt (tesseract-ocr).
+- IMPORTANT: space/app.py is a COPY of the root app.py. After editing the root
+  app.py, re-copy it into space/ before redeploying:
+  cp app.py space/app.py
+- The Space must use Gradio sdk_version that matches the app (6.18.0). An older
+  pin (5.9.1) caused an "Error: No API found" on button click.
+
+Space-aware behavior (no GPU on a free Space):
+- app.py sets IS_HOSTED = bool(os.getenv("SPACE_ID")).
+- When hosted: an amber "Hosted demo (no GPU)" banner is shown; the two local
+  model checkboxes default to OFF; the Reachy status polling timer is skipped.
+- What works live on the Space: typed medicine lookup against medicines.csv and
+  offline multilingual TEMPLATE explanations in all 6 languages.
+- What does NOT run on the Space (no GPU): MiniCPM-V image OCR, Tiny Aya
+  AI rewrite/translation, and Reachy Mini. These are shown in the demo video.
+- Hosted safety warning: because Tiny Aya cannot translate the free-text
+  medicine-specific warning without a GPU, when hosted + AI model off +
+  non-English, the safety box shows the fully translated GENERAL safety advice
+  instead of a mixed English/translated box. Desktop behavior is unchanged.
+
+Known cosmetic notes on the Space:
+- A one-time page "flash" on load comes from the forced-light-theme URL redirect
+  (?__theme=light). Intentionally kept so the app always looks light/branded.
+- Image upload does not read labels on the Space (MiniCPM-V needs a GPU); this
+  is expected and explained by the banner.
+
 Hackathon context
 -----------------
 Build Small Hackathon submission deadline: 2026-06-15.
 
 Submission requires:
-- A Gradio app hosted as a Hugging Face Space under the build-small-hackathon org.
-- A short demo video.
-- A social post.
+- A Gradio app hosted as a Hugging Face Space under the build-small-hackathon
+  org. DONE (link above).
+- A short demo video. TODO.
+- A social post. TODO.
 
 Important:
-- The submitted artifact is the MediLens desktop Gradio app (app.py).
-- The Reachy Mini voice assistant is a demo/video/social-post asset, not the
-  submitted Space itself.
+- The submitted artifact is the full MediLens Gradio app (app.py), running live
+  on the Space with a no-GPU note for the model/robot features.
+- The Reachy Mini voice assistant is the standout demo asset for the video and
+  social post.
 - The app is a good fit for the Backyard AI track.
 - Sponsor alignment: MiniCPM/OpenBMB and Tiny Aya/Cohere are used.
 - Bonus alignment: llama.cpp runtime, offline execution, custom UI.
 
-Open questions / risks
-----------------------
-- Hugging Face Spaces GPU allowance may be limited (user mentioned 40 minutes of
-  GPU over multiple usages).
-- If a Space does not have cached GGUF models or a GPU-capable llama.cpp build,
-  the local model startup path may not work live.
-- Consider using the recorded demo/video to show the full local/Reachy offline
-  workflow even if the public Space cannot host the full local model stack.
+Demo video plan
+---------------
+A ~2 minute script is agreed:
+- Problem: finding unknown medicines at a parent's/grandparent's house and
+  wanting a quick, plain explanation to decide keep vs throw away.
+- Space: typed lookup + multilingual explanation (works live).
+- Desktop: MiniCPM-V reads the label from a photo, Tiny Aya translates.
+- Reachy Mini: hands-free voice answer for people who cannot type or use a phone
+  camera - the emotional payoff.
+- Suggested free tools: OBS Studio (screen capture), Clipchamp or CapCut
+  (editing), DaVinci Resolve/Shotcut/OpenShot as alternatives.
