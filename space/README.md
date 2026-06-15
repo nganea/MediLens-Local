@@ -12,6 +12,7 @@ short_description: Offline, multilingual medicine-label helper
 tags:
   - track:backyard
   - sponsor:openbmb
+  - sponsor:openai
   - achievement:offgrid
   - achievement:offbrand
   - achievement:llama
