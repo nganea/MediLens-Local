@@ -57,6 +57,38 @@ MEDIUM_CONFIDENCE_MIN_SCORE = 80
 HIGH_CONFIDENCE_MIN_SCORE = 90
 MANUAL_MATCH_MIN_SCORE = 90
 
+# Values mirrored from the desktop app's config so Technical details looks the same.
+DEFAULT_IMAGE_IDENTIFICATION_SECONDS = 60
+MIN_IMAGE_IDENTIFICATION_SECONDS = 10
+MAX_IMAGE_IDENTIFICATION_SECONDS = 99
+ORIENTATION_NORMAL_FIRST = "Normal first"
+ORIENTATION_MIRRORED_FIRST = "Mirrored first"
+ORIENTATION_FULL_AUTO = "Full auto"
+DEFAULT_VISION_OCR_URL = "http://127.0.0.1:8081/v1/chat/completions"
+DEFAULT_MODEL_URL = "http://127.0.0.1:8080/v1/chat/completions"
+
+# On the hosted demo there are no local model servers or robot; these controls
+# mirror the desktop layout and report that the heavy features live there.
+HOSTED_SERVER_STATUS = (
+    "This hosted demo does not run local model servers. In the full desktop app, "
+    "MiniCPM-V 4.6 runs on port 8081 and Tiny Aya Global on port 8080 via llama.cpp."
+)
+HOSTED_REACHY_STATUS = (
+    "Reachy Mini runs in the full desktop app and is shown in the demo video.\n\n"
+    "On hardware: turn on Reachy Mini at reachy-mini.local:8000, make sure other "
+    "robot apps are off, then press Start. Reachy listens hands-free, captures the "
+    "label with its camera, identifies the medicine, and speaks the answer in your "
+    "language - all offline. This hosted Space runs the lightweight web version above."
+)
+
+
+def hosted_server_status_message():
+    return HOSTED_SERVER_STATUS
+
+
+def hosted_reachy_status_message():
+    return HOSTED_REACHY_STATUS
+
 
 GENERAL_SAFETY_WARNING = {
     "English": (
@@ -326,17 +358,6 @@ MODEL_NOTE = (
     "llama.cpp - shown in the demo video."
 )
 
-REACHY_HTML = (
-    '<div class="source-url-box">'
-    '<p><strong>Reachy Mini voice assistant (in the demo video).</strong> '
-    'The full project also runs hands-free on a Reachy Mini robot: say its name plus a '
-    'medicine word, it captures the label with its camera, identifies the medicine, and '
-    'speaks the answer in your language. Speech is fully offline - faster-whisper (OpenAI '
-    'Whisper) for listening, Kokoro and Piper voices for speaking. This is shown in the demo '
-    'video; the hosted Space runs the lightweight web version above.</p>'
-    '</div>'
-)
-
 THEME = gr.themes.Soft(
     primary_hue=gr.themes.colors.blue,
     radius_size=gr.themes.sizes.radius_lg,
@@ -400,8 +421,73 @@ with gr.Blocks(title="MediLens Local") as demo:
         )
 
     with gr.Accordion("Technical details", open=False):
-        ocr_output = gr.Textbox(label="Extracted OCR text", lines=4, elem_id="ocr-output")
-        gr.HTML(REACHY_HTML, elem_id="reachy-status-output")
+        gr.HTML(
+            '<p class="match-na">Settings below mirror the desktop app. On this hosted '
+            'CPU demo the local-model and Reachy controls are informational - those run '
+            'in the full desktop app (and the demo video).</p>',
+            elem_id="processing-progress",
+        )
+        with gr.Row(equal_height=True):
+            with gr.Column(scale=1, elem_id="technical-left-panel"):
+                image_timeout_input = gr.Number(
+                    value=DEFAULT_IMAGE_IDENTIFICATION_SECONDS,
+                    minimum=MIN_IMAGE_IDENTIFICATION_SECONDS,
+                    maximum=MAX_IMAGE_IDENTIFICATION_SECONDS,
+                    precision=0,
+                    label="Max image processing time, seconds",
+                )
+                orientation_mode_input = gr.Dropdown(
+                    choices=[ORIENTATION_NORMAL_FIRST, ORIENTATION_MIRRORED_FIRST, ORIENTATION_FULL_AUTO],
+                    value=ORIENTATION_NORMAL_FIRST,
+                    label="Image orientation mode",
+                )
+                max_attempts_input = gr.Number(
+                    value=2, minimum=1, maximum=2, precision=0,
+                    label="Max attempts per image orientation",
+                )
+                ocr_output = gr.Textbox(label="Extracted OCR text", lines=4, elem_id="ocr-output")
+            with gr.Column(scale=1, elem_id="technical-right-panel"):
+                use_vision_ocr_input = gr.Checkbox(
+                    value=True,
+                    label="Use local MiniCPM-V 4.6 model with Tesseract (reads image)",
+                    elem_id="use-vision-ocr-checkbox",
+                )
+                use_ai_model_input = gr.Checkbox(
+                    value=True,
+                    label="Use local Tiny Aya Global model (explains and translates)",
+                    elem_id="use-ai-model-checkbox",
+                )
+                server_status_output = gr.Textbox(
+                    label="Local model server status",
+                    value=HOSTED_SERVER_STATUS,
+                    lines=2,
+                    elem_id="server-status-output",
+                )
+                start_servers_button = gr.Button(
+                    "Check/retry local model servers",
+                    elem_id="start-servers-btn",
+                )
+                with gr.Accordion("Model server URLs (advanced)", open=False, elem_id="model-server-urls"):
+                    vision_ocr_url_input = gr.Textbox(
+                        value=DEFAULT_VISION_OCR_URL,
+                        label="Local MiniCPM-V 4.6 server URL",
+                        placeholder="http://127.0.0.1:8081/v1/chat/completions",
+                    )
+                    model_url_input = gr.Textbox(
+                        value=DEFAULT_MODEL_URL,
+                        label="Local Tiny Aya server URL",
+                        placeholder="http://127.0.0.1:8080/v1/chat/completions",
+                    )
+                reachy_status_output = gr.Textbox(
+                    label="Reachy Mini MediLens status",
+                    value=HOSTED_REACHY_STATUS,
+                    lines=6,
+                    elem_id="reachy-status-output",
+                )
+                reachy_button = gr.Button(
+                    "Start Reachy Mini MediLens",
+                    elem_id="reachy-mini-btn",
+                )
 
     search_btn.click(
         identify,
@@ -413,6 +499,8 @@ with gr.Blocks(title="MediLens Local") as demo:
         inputs=[glossary_language_input, bad_phrase_input, preferred_phrase_input],
         outputs=[glossary_suggestions_table, bad_phrase_input, preferred_phrase_input],
     )
+    start_servers_button.click(hosted_server_status_message, outputs=[server_status_output])
+    reachy_button.click(hosted_reachy_status_message, outputs=[reachy_status_output])
 
 if __name__ == "__main__":
     demo.launch(css=CUSTOM_CSS, theme=THEME, js=FORCE_LIGHT_THEME_JS)
