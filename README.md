@@ -15,17 +15,22 @@ This app was developed with the help of OpenAI Codex and Claude.
 - Show extracted text, likely match, confidence, common uses, and safety warnings.
 - Handle unclear labels with a low-confidence message.
 - Template responses in English, French, German, Italian, Spanish, and Romanian.
-- Optional local multilingual explanation generation with the Tiny Aya Global GGUF model.
+- Optional local multilingual explanation and translation with the Tiny Aya Global GGUF model.
+- "Improve translation" section for submitting reviewed glossary suggestions.
 - Reusable `medilens_core` package for desktop, API, or robot adapters.
-- Reachy Mini adapter scaffold for English-only spoken medicine identification.
+- Reachy Mini hands-free, multilingual voice assistant (confirmed working on hardware), startable from the desktop app.
 
 ## Files
 
-- `app.py` - Gradio desktop application and UI event wiring.
+- `app.py` - Gradio desktop application, UI event wiring, and Reachy Mini start/stop controls.
 - `medilens_core/` - Reusable medicine database, matching, OCR, model-server, explanation, and robot pipeline code.
 - `static/medilens.css` - Gradio UI styling.
-- `robot/reachy_mini_app.py` - Reachy Mini adapter scaffold and image-file test entry point.
+- `robot/medilens_robot_service.py` - Local HTTP service (`/health`, `/status`, `/identify`) the robot calls.
+- `robot/reachy_mini_app.py` - Reachy Mini adapter and CLI: camera capture, speech, head/antenna motion, hands-free listening.
+- `robot/voice_listener.py` - Offline microphone listener (energy VAD + faster-whisper).
 - `medicines.csv` - Local 200-row starter medicine database.
+- `translation_glossary.csv` - Reviewed translation glossary used to improve Tiny Aya phrasing.
+- `space/` - Self-contained lightweight build for Hugging Face Spaces (CPU-only demo).
 - `requirements.txt` - Python package dependencies.
 - `README.md` - Setup and usage notes.
 
@@ -152,107 +157,58 @@ Open this address in your browser:
 http://127.0.0.1:7860
 ```
 
-## Reachy Mini Prototype
+## Reachy Mini Voice Assistant
 
-The reusable medicine logic now lives in `medilens_core`, so Reachy Mini does not need to run the Gradio web UI. The recommended hackathon setup is:
+The reusable medicine logic lives in `medilens_core`, so Reachy Mini does not run the Gradio web UI. Instead, Reachy Mini is a **hands-free, multilingual voice assistant** that has been confirmed working on real hardware. Everything runs offline.
 
-- Run MiniCPM-V 4.6 on the desktop or laptop at `http://127.0.0.1:8081/v1/chat/completions`.
-- Run the MediLens robot service on the desktop or laptop so Reachy can call it over Wi-Fi.
-- Let Reachy Mini handle the cue phrase, camera capture, speech, and thinking head movement.
-- Let the service call `medilens_core.pipeline.identify_medicine_from_image(...)` with a 90-second timeout.
-- Use `Full auto` image orientation by default, so the robot path tries normal, mirrored, upside-down, and flipped label candidates.
-- Retry MiniCPM-V 4.6 once for a candidate orientation only when the first result is empty or weak.
-- Speak only the English result from the local medicine database.
+The flow:
 
-The desktop service is in:
+1. Reachy loads and calibrates its microphone, waggles its antennas, and says the listening prompt.
+2. The wake cue is Reachy's name plus a medicine word.
+3. Reachy says "Okay", captures the label with its camera, does a thinking head motion, identifies the medicine, and speaks the answer in the same language it detected.
+4. It keeps listening for the next question until you say "Reachy stop" or press Stop in the desktop app.
 
-```bash
-robot/medilens_robot_service.py
-```
+The speech stack (all offline):
 
-The Reachy-side scaffold is in:
+- **Text-to-speech:** Kokoro neural voice (English) and Piper voices (Romanian, German, French, Italian, Spanish), with Windows SAPI as a fallback.
+- **Speech-to-text:** `faster-whisper` (English-only `base.en`, multilingual `small` for other languages).
+- Listening can use the laptop microphone or Reachy Mini's own microphone (the desktop button defaults to Reachy's mic).
 
-```bash
-robot/reachy_mini_app.py
-```
+### Easiest way to start it: the desktop app
 
-### Desktop/Laptop Setup
+In **Technical details** in the desktop app there is a **Start Reachy Mini MediLens** / **Stop Reachy Mini MediLens** button. Before starting, turn on Reachy Mini at `reachy-mini.local:8000`, make sure other robot apps are off, and allow Windows Firewall if prompted. The button starts the local robot service and the hands-free app in the background, and feeds Reachy's result back into the desktop fields. Stop gracefully shuts Reachy down (goodbye phrase, antennas lowered, process exit).
 
-Start MiniCPM-V 4.6:
+### Manual / command-line use
+
+The components are:
+
+- `robot/medilens_robot_service.py` - local HTTP service (`/health`, `/status`, `/identify`).
+- `robot/reachy_mini_app.py` - Reachy adapter and CLI.
+- `robot/voice_listener.py` - offline mic listener.
+
+Start MiniCPM-V 4.6 and the robot service on the laptop/desktop:
 
 ```bash
 llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
-```
-
-In another terminal, start the MediLens robot service:
-
-```bash
 python robot/medilens_robot_service.py --host 0.0.0.0 --port 8765
 ```
 
-Find your laptop's local network IP address.
+Make sure Reachy Mini and the laptop are on the same Wi-Fi network and the laptop firewall allows inbound connections on port `8765`. You can sanity-check the service from the same laptop at `http://127.0.0.1:8765/health`.
 
-PowerShell:
-
-```powershell
-ipconfig
-```
-
-Look for the IPv4 address on the Wi-Fi adapter, for example:
-
-```text
-<LAPTOP_IP>
-```
-
-You can test the service from the same laptop:
-
-```text
-http://127.0.0.1:8765/health
-```
-
-### Reachy Mini Setup
-
-You do not need to start Reachy Mini until the desktop service is running. When you are ready for hardware testing:
-
-- Put Reachy Mini and the laptop/desktop on the same Wi-Fi network.
-- Make sure the laptop firewall allows inbound connections on port `8765`.
-- Point Reachy at the laptop service URL, for example `http://<LAPTOP_IP>:8765`.
-
-You can test the Reachy-side flow with an image file before wiring the real Reachy SDK:
+Run the hands-free assistant (this is effectively what the desktop button runs):
 
 ```bash
-python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://<LAPTOP_IP>:8765 --timeout 90
+py -3 robot/reachy_mini_app.py --use-reachy --listen --language auto \
+  --orientation-mode "Normal first" --max-vision-attempts 1 \
+  --service-url http://127.0.0.1:8765 --reachy-host reachy-mini.local \
+  --reachy-port 8000 --timeout 90 --mic reachy --show-result
 ```
 
-The Reachy-side test command uses `Full auto` image orientation by default. You can override it for faster tests:
+You can also test the pipeline with a plain image file, no robot required:
 
 ```bash
-python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://<LAPTOP_IP>:8765 --orientation-mode "Normal first" --timeout 90
+python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://127.0.0.1:8765 --timeout 90
 ```
-
-The default MiniCPM-V 4.6 retry setting is `2` attempts per orientation, but the second attempt is only used when the first attempt does not produce a useful medicine match. To make a faster single-pass test:
-
-```bash
-python robot/reachy_mini_app.py path/to/medicine-label.jpg --service-url http://<LAPTOP_IP>:8765 --max-vision-attempts 1 --timeout 90
-```
-
-Replace the methods on `ReachyMiniHooks` with the actual Reachy Mini SDK calls for:
-
-- cue phrase / ASR command handling
-- `speak`
-- `capture_image`
-- `start_thinking_motion`
-- `stop_thinking_motion`
-
-The intended spoken flow is:
-
-1. User: "Hey Reachy Mini, what's this medicine for?"
-2. Reachy: "Okay, hold the medicine label in front of me."
-3. Reachy captures a photo.
-4. Reachy: "I have taken a picture. I am checking it now."
-5. Reachy moves its head while MiniCPM-V 4.6 and database matching run.
-6. If found: "It looks like Paracetamol. It is used for..."
-7. If not found: "I do not know what this medicine is. Try the MediLens app on your device."
 
 ### Use The Camera
 
@@ -277,14 +233,11 @@ In **Technical details**, the **Image orientation mode** setting controls how ma
 - `Mirrored first` is best for desktop or laptop webcam captures where the label appears left-right reversed.
 - `Full auto` is the broadest fallback, but it can be slow because MiniCPM may need to try several transformed images.
 
-The app tries to set this automatically:
+On page load the orientation mode defaults to `Normal first`, which suits uploaded images and phone/tablet photos. Choose `Full auto` only for desktop webcam captures, where the label may appear reversed or rotated. The desktop default is `2` attempts per orientation for caution; the Reachy Mini path uses `1` attempt for speed.
 
-- phone or tablet: `Normal first`
-- desktop or laptop: `Full auto`
+The app does not start local AI models just because the page loads. It checks/starts the local model servers when you upload/capture an image or type a medicine name and click **Search**. While models are being checked or started, the Search button is disabled and the text under it reads "Loading AI models...". In **Technical details**, **Max image processing time, seconds** lets the user choose a wait time from 10 to 99 seconds (default 60). If MiniCPM cannot identify the image with high confidence within that time, the app stops and asks the user to type the medicine name or label text instead.
 
-The app checks local model server status when you upload/capture an image or click read. It does not constantly check server status in the background. If reading takes a long time, it is usually because MiniCPM is processing one or more image orientations. In **Technical details**, **Max image processing time, seconds** lets the user choose a two-digit wait time from 10 to 99 seconds. The default is 60 seconds. If MiniCPM cannot identify the image with high confidence within that time, the app stops and asks the user to type the medicine name or label text instead.
-
-During MiniCPM image reading, the app shows small status text under the **Read medicine label** button if reading takes more than 5 seconds. The reserved status area stays in place when processing finishes, so the fields do not shift.
+During MiniCPM image reading, the app shows small status text under the **Search** button (for example `Processing image... 18/60s`). The reserved status area stays in place when processing finishes, so the fields do not shift.
 
 ### Use A Phone Camera
 
@@ -455,6 +408,20 @@ The app will add `-ngl 99` to each `llama-server` command. Leave the variable un
 
 If the MiniCPM-V server is not running and cannot be started, the app shows Tesseract OCR text for debugging but does not trust it for medicine matching.
 
+## Languages and Translation
+
+The app supports English, French, German, Italian, Romanian, and Spanish. The language dropdown is alphabetized, and the app can pick an initial language from the browser setting while staying local. When the language changes, the field labels and page text update and existing results are cleared, so press **Search** again.
+
+Tiny Aya rewrites the medicine use and safety warning to be easier to read (aimed at a 14-15 year-old reading level, at most three short sentences, no dosage instructions) and translates them into the selected language.
+
+### Improve translation
+
+Above **Technical details** there is an **Improve translation** section where users can submit a glossary suggestion (language, bad phrase, preferred phrase). Suggestions are saved to `translation_glossary_suggestions.csv` and are **not** applied automatically - they need human review before being moved into the reviewed `translation_glossary.csv`.
+
+## Hugging Face Space
+
+A self-contained, CPU-only build for Hugging Face Spaces lives in `space/`. It keeps the parts that run reliably on free CPU (manual name entry, optional Tesseract OCR, local database matching, offline multilingual template explanations) and drops the local llama.cpp servers and Reachy integration, which are shown in the demo video. To deploy, create a Gradio Space and upload the contents of `space/` (`app.py`, `README.md`, `requirements.txt`, `packages.txt`, `medicines.csv`) at the repo root.
+
 ## How It Works
 
 1. The user uploads or captures an image.
@@ -464,9 +431,9 @@ If the MiniCPM-V server is not running and cannot be started, the app shows Tess
 5. The highest fuzzy-match score is selected.
 6. Confidence is classified as:
 
-- high: score >= 85
-- medium: score 70 to 84
-- low: score < 70
+- high: score >= 90
+- medium: score 80 to 89
+- low: score < 80
 
 If confidence is low, the app asks the user to try a clearer photo or ask a pharmacist.
 
