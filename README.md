@@ -15,6 +15,13 @@ MediLens runs two small local models through `llama.cpp`, both used fully offlin
 
 Local text OCR also uses **Tesseract** (`pytesseract`), and name matching uses **rapidfuzz**.
 
+The **Reachy Mini** voice assistant adds an offline speech stack:
+
+- **Speech-to-text:** **`faster-whisper`** (a fast CTranslate2 reimplementation of **OpenAI Whisper**) - `base.en` for English and the multilingual `small` model for other languages.
+- **Text-to-speech (English):** **Kokoro** neural voice via `kokoro-onnx` (by hexgrad).
+- **Text-to-speech (Romanian, German, French, Italian, Spanish):** **Piper** voices (by the Open Home Foundation / Rhasspy): `ro_RO-mihai`, `de_DE-thorsten`, `fr_FR-siwis`, `it_IT-paola`, `es_ES-davefx`.
+- **Fallback voice:** Windows **SAPI** (Microsoft).
+
 The app was developed with the help of **OpenAI Codex** and **Claude Opus**.
 
 ## Features

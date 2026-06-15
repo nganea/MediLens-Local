@@ -40,8 +40,15 @@ the local database matching and offline multilingual template explanations.
 ## Credits
 
 Models: **MiniCPM-V 4.6** by OpenBMB and **Tiny Aya Global** by Cohere / Cohere
-Labs. Local text OCR uses Tesseract; name matching uses rapidfuzz. The app was
-developed with the help of **OpenAI Codex** and **Claude Opus**.
+Labs. Local text OCR uses Tesseract; name matching uses rapidfuzz.
+
+The Reachy Mini voice assistant (shown in the demo video) adds an offline speech
+stack: **faster-whisper** (a reimplementation of **OpenAI Whisper**) for
+speech-to-text, **Kokoro** (by hexgrad) and **Piper** (by the Open Home
+Foundation / Rhasspy) voices for text-to-speech, with Windows SAPI as a
+fallback.
+
+The app was developed with the help of **OpenAI Codex** and **Claude Opus**.
 
 ## Safety
 
