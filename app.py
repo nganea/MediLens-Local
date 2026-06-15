@@ -1242,7 +1242,12 @@ def read_label(
         manual_help = hide_manual_label_help()
         manual_label_update = manual_label_optional_placeholder(language)
 
-    if medicine_warning:
+    if medicine_warning and IS_HOSTED and not use_ai_model and language != "English":
+        # On the no-GPU hosted demo Tiny Aya cannot translate the free-text
+        # medicine-specific warning, so show the fully translated general safety
+        # advice instead of a mixed English/translated box. (Desktop is unaffected.)
+        safety_warning = GENERAL_SAFETY_WARNING[language]
+    elif medicine_warning:
         try:
             translated_warning = translate_medicine_warning(medicine_warning, language, use_ai_model, model_url)
         except TinyAyaUnavailableError:
