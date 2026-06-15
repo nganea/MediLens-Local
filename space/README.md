@@ -23,8 +23,8 @@ run here:
 - **MiniCPM-V 4.6** (OpenBMB) - vision OCR that reads labels from a photo.
 - **Tiny Aya Global (3B)** (Cohere / Cohere Labs) - rewrites and translates the
   explanation at a 14-15 year-old reading level.
-- **Reachy Mini** - a hands-free, multilingual voice assistant (offline speech
-  via faster-whisper / Whisper, Kokoro, and Piper).
+- **Reachy Mini (Hugging Face)** - a hands-free, multilingual voice assistant
+  (offline speech via faster-whisper / Whisper, Kokoro, and Piper).
 
 What works fully on this hosted demo: **medicine lookup** against a local
 200-medicine database and **offline multilingual explanations** (English,
@@ -41,3 +41,12 @@ video.
 Informational only. MediLens does not give dosage instructions, does not tell
 anyone to take a medicine, and does not confirm a medicine is safe for a
 specific person. Always check with a pharmacist or doctor.
+
+## Credits
+
+Models: **MiniCPM-V 4.6** by OpenBMB and **Tiny Aya Global** by Cohere / Cohere
+Labs. Robot: **Reachy Mini** by Hugging Face. Offline speech: faster-whisper
+(OpenAI Whisper), Kokoro, and Piper. Local text OCR uses Tesseract; name
+matching uses rapidfuzz.
+
+This app was developed with the help of **OpenAI Codex** and **Anthropic Claude**.
