@@ -48,6 +48,22 @@ from medilens_core.ocr import choose_readable_image_orientation, readable_image_
 APP_SERVER_NAME = os.getenv("MEDILENS_SERVER_NAME")
 APP_SERVER_PORT = int(os.getenv("MEDILENS_SERVER_PORT", "7860"))
 APP_SHARE = os.getenv("MEDILENS_SHARE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+# True when running on a Hugging Face Space (HF sets SPACE_ID). On the hosted
+# CPU demo there is no GPU, no llama.cpp, and no Reachy Mini, so the local-model
+# features cannot run. The UI stays identical; we just show a note and start with
+# the offline template path so the app is usable without errors.
+IS_HOSTED = bool(os.getenv("SPACE_ID"))
+HOSTED_BANNER_HTML = """
+<div id="hosted-note">
+  <strong>Hosted demo (no GPU).</strong> This is the live MediLens app, but a free
+  Hugging Face Space has no GPU, so the local AI models (MiniCPM-V 4.6 vision OCR and
+  Tiny Aya Global translation) and the Reachy Mini robot cannot run here. Medicine
+  lookup and offline multilingual explanations work fully. To use the AI models and
+  the robot, run MediLens on your own computer from the GitHub repository - see the
+  demo video for the complete experience.
+</div>
+"""
 PROJECT_ROOT = Path(__file__).resolve().parent
 REACHY_SERVICE_HOST = os.getenv("MEDILENS_REACHY_SERVICE_HOST", "0.0.0.0")
 REACHY_SERVICE_PORT = int(os.getenv("MEDILENS_REACHY_SERVICE_PORT", "8765"))
@@ -1319,6 +1335,8 @@ with gr.Blocks(
         f"# MediLens\n{UI_LABELS['English']['intro']}",
         elem_id="intro-text",
     )
+    if IS_HOSTED:
+        gr.HTML(HOSTED_BANNER_HTML, elem_id="hosted-note-block")
     browser_language_input = gr.Textbox(visible=False)
     browser_device_input = gr.Textbox(value=DEVICE_DESKTOP_OR_LAPTOP, visible=False)
     image_source_input = gr.Textbox(value="", visible=False)
@@ -1412,12 +1430,12 @@ with gr.Blocks(
                 ocr_output = gr.Textbox(label="Extracted OCR text", lines=4, elem_id="ocr-output")
             with gr.Column(scale=1, elem_id="technical-right-panel"):
                 use_vision_ocr_input = gr.Checkbox(
-                    value=True,
+                    value=not IS_HOSTED,
                     label="Use local MiniCPM-V 4.6 model with Tesseract (reads image)",
                     elem_id="use-vision-ocr-checkbox",
                 )
                 use_ai_model_input = gr.Checkbox(
-                    value=True,
+                    value=not IS_HOSTED,
                     label="Use local Tiny Aya Global model (explains and translates)",
                     elem_id="use-ai-model-checkbox",
                 )
@@ -1623,7 +1641,7 @@ with gr.Blocks(
         outputs=[reachy_button],
     )
 
-    if hasattr(gr, "Timer"):
+    if hasattr(gr, "Timer") and not IS_HOSTED:
         reachy_status_timer = gr.Timer(3.0)
         reachy_status_timer.tick(
             fn=refresh_reachy_status,

@@ -1,5 +1,5 @@
 ---
-title: MediLens Local
+title: MediLens
 emoji: 💊
 colorFrom: blue
 colorTo: indigo
@@ -8,47 +8,33 @@ sdk_version: 6.18.0
 app_file: app.py
 pinned: false
 license: mit
-short_description: Offline medicine-label helper using small local models
+short_description: Offline, multilingual medicine-label helper
 ---
 
-# MediLens Local: Medicine Label Helper
+# MediLens: Medicine Label Helper
 
-MediLens Local helps someone read a medicine label and understand, in plain
-language and in their own language, what the medicine is commonly used for.
+MediLens helps someone read a medicine label and understand, in plain language
+and in their own language, what the medicine is commonly used for.
 
-This Space is the **lightweight, CPU-friendly demo** of the project. Type a
-medicine name (or upload a label photo) and pick a language; MediLens fuzzy-
-matches the text against a local 200-medicine database and shows the likely
-medicine, its common use, a safety warning, and the source - fully offline, no
-cloud APIs.
+This Space runs the **full MediLens app** exactly as designed. Because a free
+Hugging Face Space has **no GPU**, the two local AI models and the robot cannot
+run here:
 
-## How it fits the Build Small Hackathon (Backyard AI)
+- **MiniCPM-V 4.6** (OpenBMB) - vision OCR that reads labels from a photo.
+- **Tiny Aya Global (3B)** (Cohere / Cohere Labs) - rewrites and translates the
+  explanation at a 14-15 year-old reading level.
+- **Reachy Mini** - a hands-free, multilingual voice assistant (offline speech
+  via faster-whisper / Whisper, Kokoro, and Piper).
 
-The real user is a relative who does not read English medicine labels well. The
-full desktop version uses two small local models through `llama.cpp`:
+What works fully on this hosted demo: **medicine lookup** against a local
+200-medicine database and **offline multilingual explanations** (English,
+French, German, Italian, Romanian, Spanish). The AI-model and Reachy controls
+are shown so the interface matches the desktop app; a note in the app explains
+they need a local GPU.
 
-- **MiniCPM-V 4.6** (vision OCR) by **OpenBMB** - reads stylised medicine labels
-  from a photo.
-- **Tiny Aya Global (3B)** by **Cohere / Cohere Labs** - rewrites and translates
-  the explanation into the user's language at a 14-15 year-old reading level.
-
-It also drives a **Reachy Mini** robot for a hands-free, multilingual voice
-assistant. Those parts need local model servers and a GPU, so they are shown in
-the demo video. This hosted Space keeps the parts that run reliably on free CPU:
-the local database matching and offline multilingual template explanations.
-
-## Credits
-
-Models: **MiniCPM-V 4.6** by OpenBMB and **Tiny Aya Global** by Cohere / Cohere
-Labs. Local text OCR uses Tesseract; name matching uses rapidfuzz.
-
-The Reachy Mini voice assistant (shown in the demo video) adds an offline speech
-stack: **faster-whisper** (a reimplementation of **OpenAI Whisper**) for
-speech-to-text, **Kokoro** (by hexgrad) and **Piper** (by the Open Home
-Foundation / Rhasspy) voices for text-to-speech, with Windows SAPI as a
-fallback.
-
-The app was developed with the help of **OpenAI Codex** and **Claude Opus**.
+To experience everything (vision OCR, AI translation, and the Reachy Mini robot),
+run MediLens on your own computer from the GitHub repository, or watch the demo
+video.
 
 ## Safety
 
