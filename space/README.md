@@ -9,6 +9,12 @@ app_file: app.py
 pinned: false
 license: mit
 short_description: Offline, multilingual medicine-label helper
+tags:
+  - track:backyard
+  - sponsor:openbmb
+  - achievement:offgrid
+  - achievement:offbrand
+  - achievement:llama
 ---
 
 # MediLens: Medicine Label Helper
@@ -35,6 +41,12 @@ they need a local GPU.
 To experience everything (vision OCR, AI translation, and the Reachy Mini robot),
 run MediLens on your own computer from the GitHub repository, or watch the demo
 video.
+
+## Links
+
+- **Demo video:** https://youtube.com/shorts/nUSK8DPznm4
+- **GitHub repository:** https://github.com/nganea/MediLens-Local
+- **LinkedIn post:** https://www.linkedin.com/posts/natasa-ganea_medilens-offline-ai-medicine-helper-with-share-7472309911658610689-yFtq/
 
 ## Safety
 

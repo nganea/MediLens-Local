@@ -12,6 +12,39 @@ Updated: 2026-06-15
 This project is the MediLens Local desktop Gradio app plus a Reachy Mini demo
 integration. The current branch is `experiments`.
 
+Latest hackathon/public status
+------------------------------
+The Build Small Hackathon submission assets are complete:
+
+- Hugging Face Space:
+  https://huggingface.co/spaces/build-small-hackathon/medilens-local
+- GitHub repository:
+  https://github.com/nganea/MediLens-Local
+- Demo video:
+  https://youtube.com/shorts/nUSK8DPznm4
+- LinkedIn post:
+  https://www.linkedin.com/posts/natasa-ganea_medilens-offline-ai-medicine-helper-with-share-7472309911658610689-yFtq/
+
+The final local demo video is:
+MediLens_video/MediLens_story_video_final.mp4
+
+The video workspace is organized as:
+- MediLens_video/original recordings/ for raw source clips.
+- MediLens_video/video editing/ for kept editing segments and thumbnail assets.
+- MediLens_video/MediLens_story_video_final.mp4 at the top level.
+
+The Space README metadata file with hackathon validation tags is now:
+space/README.md
+
+It includes:
+- track:backyard
+- sponsor:openbmb
+- achievement:offgrid
+- achievement:offbrand
+- achievement:llama
+
+Do not accidentally replace it with the older README that lacked these tags.
+
 Start the desktop app from Git Bash:
 
 cd ~/Documents/Codex/MediLens
@@ -536,11 +569,13 @@ Hackathon context
 -----------------
 Build Small Hackathon submission deadline: 2026-06-15.
 
-Submission requires:
+Submission assets:
 - A Gradio app hosted as a Hugging Face Space under the build-small-hackathon
   org. DONE (link above).
-- A short demo video. TODO.
-- A social post. TODO.
+- A short demo video. DONE:
+  https://youtube.com/shorts/nUSK8DPznm4
+- A social post. DONE:
+  https://www.linkedin.com/posts/natasa-ganea_medilens-offline-ai-medicine-helper-with-share-7472309911658610689-yFtq/
 
 Important:
 - The submitted artifact is the full MediLens Gradio app (app.py), running live
@@ -551,14 +586,32 @@ Important:
 - Sponsor alignment: MiniCPM/OpenBMB and Tiny Aya/Cohere are used.
 - Bonus alignment: llama.cpp runtime, offline execution, custom UI.
 
-Demo video plan
----------------
-A ~2 minute script is agreed:
-- Problem: finding unknown medicines at a parent's/grandparent's house and
-  wanting a quick, plain explanation to decide keep vs throw away.
-- Space: typed lookup + multilingual explanation (works live).
-- Desktop: MiniCPM-V reads the label from a photo, Tiny Aya translates.
-- Reachy Mini: hands-free voice answer for people who cannot type or use a phone
-  camera - the emotional payoff.
-- Suggested free tools: OBS Studio (screen capture), Clipchamp or CapCut
-  (editing), DaVinci Resolve/Shotcut/OpenShot as alternatives.
+Demo video
+----------
+The final demo video was created locally with Codex-assisted editing and is kept
+outside the Git-tracked app code:
+
+MediLens_video/MediLens_story_video_final.mp4
+
+It is a vertical YouTube Short demo. It tells the story of unknown medicines in
+a drawer, then shows Reachy Mini helping, then shows the desktop app fallback.
+The final card reads:
+
+MediLens · 100% offline
+Hugging Face x Gradio
+Build Small Hackathon
+
+The public demo video link is:
+https://youtube.com/shorts/nUSK8DPznm4
+
+Video files are not intended to be committed to the main GitHub repository
+unless explicitly requested; keep them local or upload them to video platforms.
+
+Hugging Face README upload note
+-------------------------------
+If updating the Space manually through the Hugging Face "Add file" flow, upload:
+
+space/README.md
+
+to the root of the Hugging Face Space repository so it replaces the Space's
+README.md. This file contains the hackathon validation tags and public links.
