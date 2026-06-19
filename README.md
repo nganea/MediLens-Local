@@ -79,6 +79,12 @@ The app was developed with the help of **OpenAI Codex** and **Claude Opus**.
 
    After installing, close Git Bash and open it again so the `llama-server` command is available.
 
+   Use a **recent** `llama.cpp` build. MiniCPM-V is a vision model and needs its
+   multimodal projector (`mmproj`); recent builds download and load it
+   automatically with `-hf`, while older builds run text-only and fail to read
+   images. If you already have `llama.cpp`, run `winget upgrade llama.cpp`. See
+   the MiniCPM troubleshooting section below if image reading does not work.
+
    To use a GPU-enabled `llama-server`, set GPU layers before starting the app:
 
    ```bash
@@ -425,6 +431,47 @@ export MEDILENS_LLAMA_GPU_LAYERS=99
 The app will add `-ngl 99` to each `llama-server` command. Leave the variable unset, or set it to `0`, for CPU mode.
 
 If the MiniCPM-V server is not running and cannot be started, the app shows Tesseract OCR text for debugging but does not trust it for medicine matching.
+
+### Troubleshooting: MiniCPM does not read the image (but Tesseract does)
+
+MiniCPM-V is a **vision** model, so `llama.cpp` needs two files to read images:
+
+- the main model GGUF (downloaded by `-hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M`), and
+- the **multimodal projector** (`mmproj`) GGUF, which is the model's "eyes".
+
+If `llama-server` starts with only the main GGUF, it runs fine as a **text-only**
+server: the port is reachable and the app thinks MiniCPM is "running", but every
+image request fails. The app then silently falls back to Tesseract OCR. The
+symptom is exactly: **Tesseract reads the image, MiniCPM does not.**
+
+Recent `llama.cpp` builds auto-download and load the `mmproj` when you use `-hf`.
+Older builds do not, which is the most common cause on a freshly set up computer.
+
+To confirm: watch the MiniCPM `llama-server` startup log. A vision-capable server
+prints lines mentioning `clip`, `mmproj`, or `vision`. If you see none of those,
+vision is not loaded.
+
+To fix, first update `llama.cpp`:
+
+```bash
+winget upgrade llama.cpp
+```
+
+Close and reopen Git Bash, then start MiniCPM again:
+
+```bash
+llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
+```
+
+If the log now shows a `clip` / `mmproj` load line, vision is working. If your
+build still does not auto-load it, pass the projector explicitly:
+
+```bash
+llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --mmproj-url openbmb/MiniCPM-V-4.6-gguf --port 8081
+```
+
+Finally, make sure **Use local MiniCPM-V 4.6 model** is ticked in **Technical
+details** in the app. If it is unticked, the app uses Tesseract only.
 
 ## Languages and Translation
 
