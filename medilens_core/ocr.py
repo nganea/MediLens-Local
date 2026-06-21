@@ -148,6 +148,8 @@ def image_to_data_url(image: Image.Image) -> str:
 def run_vision_ocr(image: Image.Image, vision_ocr_url: str, timeout: float = 180) -> str:
     prompt = (
         "Read the medication package label in this image. "
+        "Do not think step by step. "
+        "Do not explain what you see. "
         "Return only the text that appears on the label. "
         "Focus on the brand name, generic or active ingredient, strength, and medicine type. "
         "If the image is mirrored, mentally unmirror it before reading. "
@@ -163,7 +165,8 @@ def run_vision_ocr(image: Image.Image, vision_ocr_url: str, timeout: float = 180
                 ],
             }
         ],
-        "max_tokens": 220,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "max_tokens": 512,
         "temperature": 0,
     }
 
