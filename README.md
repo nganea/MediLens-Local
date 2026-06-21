@@ -444,30 +444,59 @@ server: the port is reachable and the app thinks MiniCPM is "running", but every
 image request fails. The app then silently falls back to Tesseract OCR. The
 symptom is exactly: **Tesseract reads the image, MiniCPM does not.**
 
-Recent `llama.cpp` builds auto-download and load the `mmproj` when you use `-hf`.
-Older builds do not, which is the most common cause on a freshly set up computer.
+There are two reasons the projector may be absent at runtime: it was **never
+downloaded**, or it was **downloaded but not loaded** by `llama-server`. Start by
+checking whether the file is on disk:
 
-To confirm: watch the MiniCPM `llama-server` startup log. A vision-capable server
-prints lines mentioning `clip`, `mmproj`, or `vision`. If you see none of those,
-vision is not loaded.
+```bash
+find ~/.cache/huggingface -iname "*mmproj*"
+```
 
-To fix, first update `llama.cpp`:
+The projector lives next to the main GGUF under
+`~/.cache/huggingface/hub/models--openbmb--MiniCPM-V-4.6-gguf/`, named
+`mmproj-model-f16.gguf` (f16 is the only published precision for the projector,
+which is normal even when the main model is `Q4_K_M`).
+
+**Case A - the `find` command prints nothing (mmproj not downloaded).** The
+projector was never fetched. Re-pull the model with a recent `llama.cpp`, which
+downloads both files:
 
 ```bash
 winget upgrade llama.cpp
-```
-
-Close and reopen Git Bash, then start MiniCPM again:
-
-```bash
 llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
 ```
 
-If the log now shows a `clip` / `mmproj` load line, vision is working. If your
-build still does not auto-load it, pass the projector explicitly:
+Run the `find` command again to confirm `mmproj-model-f16.gguf` now exists.
+
+**Case B - the `find` command lists `mmproj-model-f16.gguf` (downloaded but not
+loaded).** The file is present but `llama-server` is ignoring it. **Recent
+`llama.cpp` builds load the `mmproj` automatically with `-hf`, but older builds do
+not**, so the file sits on disk unused and the server runs **text-only**. This is
+the most common cause on a freshly set up computer.
+
+Either way, confirm by watching the MiniCPM `llama-server` startup log: a
+vision-capable server prints a line that loads `mmproj-model-f16.gguf` (often
+mentioning `clip` or `vision`). If you see no such line, vision is not loaded.
+
+For Case B, first update `llama.cpp`, then close and reopen Git Bash and start
+MiniCPM again:
 
 ```bash
-llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --mmproj-url openbmb/MiniCPM-V-4.6-gguf --port 8081
+winget upgrade llama.cpp
+llama-server -hf openbmb/MiniCPM-V-4.6-gguf:Q4_K_M --port 8081
+```
+
+If the log now shows the `mmproj` load line, vision is working.
+
+If your build still will not load it, point `llama-server` at both files
+explicitly with `-m` and `--mmproj` (this works on older builds too). The glob
+expands to the snapshot folder in your Hugging Face cache:
+
+```bash
+llama-server \
+  -m ~/.cache/huggingface/hub/models--openbmb--MiniCPM-V-4.6-gguf/snapshots/*/MiniCPM-V-4_6-Q4_K_M.gguf \
+  --mmproj ~/.cache/huggingface/hub/models--openbmb--MiniCPM-V-4.6-gguf/snapshots/*/mmproj-model-f16.gguf \
+  --port 8081
 ```
 
 Finally, make sure **Use local MiniCPM-V 4.6 model** is ticked in **Technical
